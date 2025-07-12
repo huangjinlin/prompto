@@ -1,0 +1,114 @@
+{
+  "name": "prompto",
+  "displayName": "Prompto - AI Prompt Manager",
+  "description": "Manage, organize and quickly access your AI prompts with a simple file-based system",
+  "version": "2.0.0",
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "prompts",
+    "ai",
+    "chat",
+    "productivity",
+    "markdown"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "prompto.usePrompt",
+        "title": "Prompto: Use Prompt",
+        "icon": "$(play)"
+      },
+      {
+        "command": "prompto.addPrompt",
+        "title": "Prompto: Add New Prompt",
+        "icon": "$(add)"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "promptoTree",
+          "name": "Prompto",
+          "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "prompto.addPrompt",
+          "when": "view == promptoTree",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "prompto.usePrompt",
+          "when": "view == promptoTree && viewItem == prompt",
+          "group": "prompt@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "prompto.usePrompt",
+          "when": "true"
+        },
+        {
+          "command": "prompto.addPrompt",
+          "when": "true"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "prompto.usePrompt",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.4",
+    "@vscode/test-electron": "^2.2.0",
+    "vsce": "^2.15.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/prompto"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/prompto/issues"
+  },
+  "homepage": "https://github.com/yourusername/prompto#readme",
+  "author": {
+    "name": "Your Name",
+    "email": "your.email@example.com"
+  },
+  "license": "MIT",
+  "publisher": "yourpublisher"
+}

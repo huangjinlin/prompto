@@ -1,0 +1,20 @@
+# Build outputs
+out/
+dist/
+*.vsix
+
+# Node modules
+node_modules/
+
+# Temporary files (removed - using .prompto directory now)
+# .prompto/ - Keep this directory as it contains the actual prompts
+
+# VS Code settings
+.vscode/settings.json
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db 
