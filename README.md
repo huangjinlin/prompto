@@ -2,7 +2,7 @@
 
 A smarter way to manage your AI prompts in Cursor, Windsurf and beyond.
 
-Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in VS Code.
+Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.
 
 ## ✨ Features
 
