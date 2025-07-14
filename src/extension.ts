@@ -188,11 +188,7 @@ function getPromptContent(filePath: string): string {
         continue;
       }
 
-      if (
-        !inComment &&
-        line.trim() !== "" &&
-        !line.startsWith("Write your prompt content here...")
-      ) {
+      if (!inComment && !line.startsWith("Write your prompt content here...")) {
         promptContent += line + "\n";
       }
     }
