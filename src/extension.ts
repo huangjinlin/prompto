@@ -55,17 +55,51 @@ async function showPromptPicker(): Promise<void> {
       return;
     }
 
-    await navigatePromptDirectory(promptoDir, "");
+    await navigatePromptDirectoryWithGlobalSearch(promptoDir, "");
   } catch (error) {
     vscode.window.showErrorMessage(`Error showing prompt picker: ${error}`);
   }
 }
 
-async function navigatePromptDirectory(
+function getAllPromptsRecursive(
+  dir: string,
+  relativeBase: string = ""
+): Array<{ label: string; detail: string; promptPath: string }> {
+  let results: Array<{ label: string; detail: string; promptPath: string }> =
+    [];
+  const items = fs.readdirSync(dir);
+  for (const item of items) {
+    const itemPath = path.join(dir, item);
+    const relPath = relativeBase ? path.join(relativeBase, item) : item;
+    if (fs.statSync(itemPath).isDirectory()) {
+      results = results.concat(getAllPromptsRecursive(itemPath, relPath));
+    } else if (item.endsWith(".md")) {
+      results.push({
+        label: path.basename(item, ".md"),
+        detail: relPath,
+        promptPath: itemPath,
+      });
+    }
+  }
+  return results;
+}
+
+async function navigatePromptDirectoryWithGlobalSearch(
   currentPath: string,
   relativePath: string
 ): Promise<void> {
   try {
+    const allPrompts = getAllPromptsRecursive(currentPath, relativePath).map(
+      (p) => ({
+        label: `$(file-text) ${p.label}`,
+        description: undefined,
+        detail: p.detail,
+        promptPath: p.promptPath,
+        isDirectory: false,
+        isBack: false,
+      })
+    );
+
     const items = fs.readdirSync(currentPath);
     const quickPickItems: Array<{
       label: string;
@@ -123,46 +157,61 @@ async function navigatePromptDirectory(
       });
     });
 
-    if (
-      quickPickItems.length === 0 ||
-      (quickPickItems.length === 1 && quickPickItems[0].isBack)
-    ) {
-      vscode.window.showInformationMessage(
-        "No prompts or directories found in this location."
-      );
-      return;
-    }
-
     const breadcrumb = relativePath ? `/${relativePath}` : "/";
     const title = `Prompto Navigator${breadcrumb}`;
 
-    const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
-      title: title,
-      placeHolder: "Select a prompt to use or navigate to a directory",
-      matchOnDescription: true,
-      matchOnDetail: true,
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.title = title;
+    quickPick.placeholder = "Select a prompt to use or navigate to a directory";
+    quickPick.matchOnDescription = true;
+    quickPick.matchOnDetail = true;
+    quickPick.items = quickPickItems;
+
+    quickPick.onDidChangeValue((value) => {
+      if (value.trim() === "") {
+        quickPick.items = quickPickItems;
+      } else {
+        const filter = value.toLowerCase();
+        quickPick.items = allPrompts.filter(
+          (item) =>
+            item.label.toLowerCase().includes(filter) ||
+            (item.detail && item.detail.toLowerCase().includes(filter))
+        );
+      }
     });
 
-    if (selectedItem) {
-      if (selectedItem.isBack) {
+    quickPick.onDidAccept(async () => {
+      const selected = quickPick.selectedItems[0];
+      quickPick.hide();
+      if (!selected) return;
+      if ((selected as any).isBack) {
         const parentPath = path.dirname(currentPath);
         const parentRelativePath = path.dirname(relativePath);
-        await navigatePromptDirectory(
+        await navigatePromptDirectoryWithGlobalSearch(
           parentPath,
           parentRelativePath === "." ? "" : parentRelativePath
         );
-      } else if (selectedItem.isDirectory && selectedItem.directoryPath) {
+      } else if (
+        (selected as any).isDirectory &&
+        (selected as any).directoryPath
+      ) {
         const newRelativePath = relativePath
-          ? path.join(relativePath, path.basename(selectedItem.directoryPath))
-          : path.basename(selectedItem.directoryPath);
-        await navigatePromptDirectory(
-          selectedItem.directoryPath,
+          ? path.join(
+              relativePath,
+              path.basename((selected as any).directoryPath)
+            )
+          : path.basename((selected as any).directoryPath);
+        await navigatePromptDirectoryWithGlobalSearch(
+          (selected as any).directoryPath,
           newRelativePath
         );
-      } else if (selectedItem.promptPath) {
-        await usePrompt(selectedItem.promptPath);
+      } else if ((selected as any).promptPath) {
+        await usePrompt((selected as any).promptPath);
       }
-    }
+    });
+
+    quickPick.onDidHide(() => quickPick.dispose());
+    quickPick.show();
   } catch (error) {
     vscode.window.showErrorMessage(`Error navigating directory: ${error}`);
   }
