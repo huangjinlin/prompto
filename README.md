@@ -1,8 +1,8 @@
 # Prompto - AI Prompt Manager
 
-A smarter way to manage your AI prompts in Cursor, Windsurf and beyond.
+A smarter way to manage your AI prompts in Cursor (or any AI solution for VS Code).
 
-Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.
+Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow.
 
 ## ✨ Features
 

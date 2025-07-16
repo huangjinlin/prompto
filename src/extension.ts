@@ -252,6 +252,7 @@ async function processPromptVariables(content: string): Promise<string | null> {
   try {
     let processedContent: string = content;
 
+    // Handle selectedText
     if (content.includes("{{selectedText}}")) {
       const editor = vscode.window.activeTextEditor;
       const selectedText =
@@ -280,6 +281,7 @@ async function processPromptVariables(content: string): Promise<string | null> {
       );
     }
 
+    // Handle fileName
     if (content.includes("{{fileName}}")) {
       const editor = vscode.window.activeTextEditor;
       const fileName = editor?.document.fileName
@@ -291,26 +293,36 @@ async function processPromptVariables(content: string): Promise<string | null> {
       );
     }
 
+    // Find all custom variables (excluding selectedText and fileName)
     const customVariables = content.match(/\{\{(\w+)\}\}/g);
     if (customVariables) {
-      for (const variable of customVariables) {
-        const varName = variable.replace(/\{\{|\}\}/g, "");
-        if (varName !== "selectedText" && varName !== "fileName") {
-          const value = await vscode.window.showInputBox({
-            title: `Variable: ${varName}`,
-            placeHolder: `Enter value for ${varName}`,
-            prompt: `The prompt contains a variable ${variable}. What value should be used?`,
-          });
+      // Deduplicate variable names
+      const uniqueVars = Array.from(
+        new Set(
+          customVariables
+            .map((variable) => variable.replace(/\{\{|\}\}/g, ""))
+            .filter(
+              (varName) => varName !== "selectedText" && varName !== "fileName"
+            )
+        )
+      );
 
-          if (value === undefined) {
-            return null;
-          }
+      // Prompt for each unique variable
+      for (const varName of uniqueVars) {
+        const value = await vscode.window.showInputBox({
+          title: `Variable: ${varName}`,
+          placeHolder: `Enter value for ${varName}`,
+          prompt: `The prompt contains a variable {{${varName}}}. What value should be used?`,
+        });
 
-          processedContent = processedContent.replace(
-            new RegExp(`\\{\\{${varName}\\}\\}`, "g"),
-            value || ""
-          );
+        if (value === undefined) {
+          return null;
         }
+
+        processedContent = processedContent.replace(
+          new RegExp(`\\{\\{${varName}\\}\\}`, "g"),
+          value || ""
+        );
       }
     }
 
