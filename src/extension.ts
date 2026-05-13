@@ -2,6 +2,11 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { PromptTreeProvider } from "./providers/PromptTreeProvider";
+import { deliverPromptContent } from "./services/PromptDeliveryService";
+import {
+  getPromptDirectoryPath,
+  getPromptDirectorySetting,
+} from "./services/PromptDirectoryService";
 
 let treeProvider: PromptTreeProvider;
 
@@ -10,6 +15,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   treeProvider = new PromptTreeProvider();
   vscode.window.registerTreeDataProvider("promptoTree", treeProvider);
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("prompto.promptsDirectory")) {
+        treeProvider.refresh();
+      }
+    })
+  );
   registerCommands(context);
 }
 
@@ -47,11 +59,27 @@ async function showPromptPicker(): Promise<void> {
       return;
     }
 
-    const promptoDir = path.join(workspaceFolder.uri.fsPath, ".prompto");
+    const promptoDir = getPromptDirectoryPath(workspaceFolder);
     if (!fs.existsSync(promptoDir)) {
-      vscode.window.showInformationMessage(
-        "No .prompto directory found. Create your first prompt using 'Prompto: Add New Prompt'"
+      const action = await vscode.window.showInformationMessage(
+        `Prompt directory not found: ${getPromptDirectorySetting()} (${promptoDir})`,
+        "Create Directory",
+        "Open Settings"
       );
+
+      if (action === "Create Directory") {
+        fs.mkdirSync(promptoDir, { recursive: true });
+        treeProvider.refresh();
+        vscode.window.showInformationMessage(
+          "Prompt directory created. Use 'Prompto: Add New Prompt' to create your first prompt."
+        );
+      } else if (action === "Open Settings") {
+        await vscode.commands.executeCommand(
+          "workbench.action.openSettings",
+          "prompto.promptsDirectory"
+        );
+      }
+
       return;
     }
 
@@ -350,11 +378,7 @@ async function usePrompt(promptPath: string): Promise<void> {
       processedContent = result;
     }
 
-    await vscode.env.clipboard.writeText(processedContent);
-
-    vscode.window.showInformationMessage(
-      `✅ Prompt "${promptName}" copied to clipboard!`
-    );
+    await deliverPromptContent(promptName, processedContent);
   } catch (error) {
     vscode.window.showErrorMessage(`Error using prompt: ${error}`);
   }
@@ -381,7 +405,7 @@ async function showAddPromptDialog(categoryPath?: string): Promise<void> {
 
     if (!promptName) return;
 
-    const promptoDir = path.join(workspaceFolder.uri.fsPath, ".prompto");
+    const promptoDir = getPromptDirectoryPath(workspaceFolder);
     let targetDir = promptoDir;
 
     if (categoryPath) {

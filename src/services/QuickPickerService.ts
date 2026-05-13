@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { StorageService } from "./StorageService";
 import { Prompt, Category } from "../models/Prompt";
+import { deliverPromptContent } from "./PromptDeliveryService";
 
 export class QuickPickerService {
   constructor(private storageService: StorageService) {}
@@ -289,12 +290,7 @@ export class QuickPickerService {
         }
       }
 
-      // Copy to clipboard
-      await this.copyToClipboard(processedContent);
-
-      vscode.window.showInformationMessage(
-        `Prompt "${prompt.title}" copied to clipboard!`
-      );
+      await deliverPromptContent(prompt.title, processedContent);
     } catch (error) {
       vscode.window.showErrorMessage(`Error using prompt: ${error}`);
     }
@@ -463,9 +459,6 @@ export class QuickPickerService {
     }
   }
 
-  private async copyToClipboard(text: string): Promise<void> {
-    await vscode.env.clipboard.writeText(text);
-  }
 }
 
 interface PromptQuickPickItem extends vscode.QuickPickItem {

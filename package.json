@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -76,7 +76,32 @@
         "mac": "cmd+alt+p",
         "when": "editorTextFocus"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Prompto",
+      "properties": {
+        "prompto.outputMode": {
+          "type": "string",
+          "default": "chatPrefill",
+          "enum": [
+            "chatPrefill",
+            "chatSubmit",
+            "clipboard"
+          ],
+          "enumDescriptions": [
+            "Open Copilot Chat and fill the selected prompt without sending it.",
+            "Open Copilot Chat and send the selected prompt immediately.",
+            "Copy the selected prompt to the clipboard."
+          ],
+          "markdownDescription": "Controls what happens after selecting a prompt with **Prompto: Use Prompt**."
+        },
+        "prompto.promptsDirectory": {
+          "type": "string",
+          "default": ".prompto",
+          "markdownDescription": "Workspace-relative folder that stores Prompto markdown prompt files."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

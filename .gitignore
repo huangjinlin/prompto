@@ -1,6 +1,7 @@
 # Build outputs
 out/
 dist/
+test/
 *.vsix
 
 # Node modules

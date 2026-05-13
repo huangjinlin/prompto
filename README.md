@@ -6,9 +6,9 @@ Keep your prompts tidy, searchable, and ready to use — all from a clean file-b
 
 ## ✨ Features
 
-- **📁 File-based Storage**: Prompts stored as `.md` files in `.prompto` directory
+- **📁 File-based Storage**: Prompts stored as `.md` files in the configured prompt directory
 - **🗂️ Flexible Organization**: Create any directory structure you want
-- **⚡ Quick Access**: Use `Ctrl+Alt+P` to instantly select and use any prompt
+- **⚡ Quick Access**: Use `Ctrl+Alt+P` to instantly select and use any prompt in Copilot Chat
 - **📝 Natural Editing**: Edit prompts using editors's markdown editor
 - **🔧 Variable Support**: Dynamic variables like `{{selectedText}}`, `{{fileName}}`
 
@@ -24,12 +24,12 @@ Keep your prompts tidy, searchable, and ready to use — all from a clean file-b
 ### 2. Use a Prompt
 
 1. **Press `Ctrl+Alt+P`** → Prompt picker appears
-2. **Select a prompt** → Content is copied to clipboard
-3. **Paste and use** your prompt in the chat
+2. **Select a prompt** → Content is filled into GitHub Copilot Chat
+3. **Review and send** your prompt when ready
 
 ## 📁 File Structure
 
-Your prompts are organized in the `.prompto` directory, e.g.:
+Your prompts are organized in the configured prompt directory. By default this is `.prompto`, e.g.:
 
 ```
 .prompto/
@@ -45,6 +45,14 @@ Your prompts are organized in the `.prompto` directory, e.g.:
 
 - **`Prompto: Use Prompt`** (`Ctrl+Alt+P`) - Quick picker to select and use any prompt
 - **`Prompto: Add New Prompt`** - Create a new prompt file
+
+## ⚙️ Settings
+
+- **`prompto.outputMode`** - Controls what happens after selecting a prompt:
+    - `chatPrefill` (default) - fill the prompt into GitHub Copilot Chat without sending it
+    - `chatSubmit` - fill and send the prompt immediately
+    - `clipboard` - copy the prompt to the clipboard
+- **`prompto.promptsDirectory`** - Workspace-relative folder where prompt markdown files are stored. Defaults to `.prompto`.
 
 ## 🔧 Prompt Format
 
@@ -133,7 +141,7 @@ Requirements:
 - **File names** become prompt names (without `.md`)
 - **Directory structure** is reflected in the sidebar tree
 - **Edit directly** - you can modify `.md` files in editor normally
-- **Version control** - commit your `.prompto` directory to share with team
+- **Version control** - commit your configured prompt directory to share with team
 - **Backup** - your prompts are just files, easy to backup/sync
 
 ## 📄 License

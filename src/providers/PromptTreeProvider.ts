@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import { getPromptDirectoryPath } from "../services/PromptDirectoryService";
 
 export class PromptTreeProvider
   implements vscode.TreeDataProvider<PromptTreeItem>
@@ -36,7 +37,7 @@ export class PromptTreeProvider
       return [];
     }
 
-    const promptoDir = path.join(workspaceFolder.uri.fsPath, ".prompto");
+    const promptoDir = getPromptDirectoryPath(workspaceFolder);
     if (!fs.existsSync(promptoDir)) {
       return [];
     }
