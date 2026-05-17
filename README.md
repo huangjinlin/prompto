@@ -82,6 +82,61 @@ Prompto supports dynamic variables:
 - **`{{fileName}}`** - Name of the current file
 - **`{{customVariable}}`** - Prompts for user input
 
+When using `{{customVariable}}`, you can also define values inside the selected text and avoid the input box:
+
+```text
+---
+codeAspect: performance
+audience: senior engineers
+---
+function under review goes here
+```
+
+In this mode:
+
+- the header block provides values for matching `{{customVariable}}` placeholders
+- the remaining body becomes `{{selectedText}}`
+- any custom variable not provided in the header still falls back to the input box
+
+You can also select the prompt file directly from the same header block when triggering **Prompto: Use Prompt**:
+
+```text
+---
+prompt: review/code-review
+codeAspect: performance
+---
+function under review goes here
+```
+
+In this mode:
+
+- `prompt` is resolved relative to your configured prompt directory
+- the `.md` extension is optional
+- if `prompt` is omitted, Prompto still opens the picker as before
+
+## 🧩 Executable Markdown Blocks
+
+You can turn a markdown section into a clickable Prompto block by combining a heading with a `prompto` metadata comment.
+
+```markdown
+## Review This Function
+<!-- prompto
+prompt: review/code-review
+codeAspect: performance
+-->
+
+function under review goes here
+```
+
+In this mode:
+
+- Prompto shows a CodeLens action above the heading
+- clicking the action runs the block without manually selecting text
+- the section body becomes `{{selectedText}}`
+- metadata values are available to matching `{{customVariable}}` placeholders
+- the block ends at the next heading of the same or higher level
+- lower-level headings remain part of the block body
+
 **Example:**
 
 ```markdown

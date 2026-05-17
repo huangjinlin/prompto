@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { StorageService } from "./StorageService";
 import { Prompt, Category } from "../models/Prompt";
 import { deliverPromptContent } from "./PromptDeliveryService";
+import { getSelectedTextVariableContext } from "./SelectedTextVariableService";
 
 export class QuickPickerService {
   constructor(private storageService: StorageService) {}
@@ -298,6 +299,7 @@ export class QuickPickerService {
 
   private async processPromptVariables(prompt: Prompt): Promise<string | null> {
     let content = prompt.content;
+    const selectedTextContext = getSelectedTextVariableContext();
 
     for (const variable of prompt.variables) {
       const placeholder = `{{${variable.name}}}`;
@@ -308,75 +310,17 @@ export class QuickPickerService {
 
       let value: string | undefined;
 
+      if (
+        variable.name !== "selectedText" &&
+        variable.name !== "fileName" &&
+        selectedTextContext.variables[variable.name] !== undefined
+      ) {
+        value = selectedTextContext.variables[variable.name];
+      }
+
       switch (variable.type) {
         case "text":
-          value = await vscode.window.showInputBox({
-            title: `Enter ${variable.name}`,
-            placeHolder:
-              variable.description || `Enter value for ${variable.name}`,
-            value: variable.defaultValue,
-            prompt: `Variable: ${variable.name}`,
-          });
-          break;
-
-        case "number":
-          value = await vscode.window.showInputBox({
-            title: `Enter ${variable.name}`,
-            placeHolder:
-              variable.description || `Enter number for ${variable.name}`,
-            value: variable.defaultValue,
-            prompt: `Variable: ${variable.name}`,
-            validateInput: (input: string) => {
-              const num = parseFloat(input);
-              return isNaN(num) ? "Please enter a valid number" : null;
-            },
-          });
-          break;
-
-        case "boolean":
-          const booleanOptions = [
-            { label: "true", description: "True value" },
-            { label: "false", description: "False value" },
-          ];
-          const booleanChoice = await vscode.window.showQuickPick(
-            booleanOptions,
-            {
-              title: `Select ${variable.name}`,
-              placeHolder:
-                variable.description || `Select boolean for ${variable.name}`,
-            }
-          );
-          value = booleanChoice?.label;
-          break;
-
-        case "date":
-          value = await vscode.window.showInputBox({
-            title: `Enter ${variable.name}`,
-            placeHolder:
-              variable.description ||
-              `Enter date for ${variable.name} (YYYY-MM-DD)`,
-            value:
-              variable.defaultValue || new Date().toISOString().split("T")[0],
-            prompt: `Variable: ${variable.name}`,
-          });
-          break;
-
-        case "selection":
-          if (variable.options && variable.options.length > 0) {
-            const selectionOptions = variable.options.map((option) => ({
-              label: option,
-              description: `Option: ${option}`,
-            }));
-            const selectionChoice = await vscode.window.showQuickPick(
-              selectionOptions,
-              {
-                title: `Select ${variable.name}`,
-                placeHolder:
-                  variable.description || `Select option for ${variable.name}`,
-              }
-            );
-            value = selectionChoice?.label;
-          } else {
+          if (value === undefined) {
             value = await vscode.window.showInputBox({
               title: `Enter ${variable.name}`,
               placeHolder:
@@ -387,28 +331,108 @@ export class QuickPickerService {
           }
           break;
 
+        case "number":
+          if (value === undefined) {
+            value = await vscode.window.showInputBox({
+              title: `Enter ${variable.name}`,
+              placeHolder:
+                variable.description || `Enter number for ${variable.name}`,
+              value: variable.defaultValue,
+              prompt: `Variable: ${variable.name}`,
+              validateInput: (input: string) => {
+                const num = parseFloat(input);
+                return isNaN(num) ? "Please enter a valid number" : null;
+              },
+            });
+          }
+          break;
+
+        case "boolean":
+          if (value === undefined) {
+            const booleanOptions = [
+              { label: "true", description: "True value" },
+              { label: "false", description: "False value" },
+            ];
+            const booleanChoice = await vscode.window.showQuickPick(
+              booleanOptions,
+              {
+                title: `Select ${variable.name}`,
+                placeHolder:
+                  variable.description || `Select boolean for ${variable.name}`,
+              }
+            );
+            value = booleanChoice?.label;
+          }
+          break;
+
+        case "date":
+          if (value === undefined) {
+            value = await vscode.window.showInputBox({
+              title: `Enter ${variable.name}`,
+              placeHolder:
+                variable.description ||
+                `Enter date for ${variable.name} (YYYY-MM-DD)`,
+              value:
+                variable.defaultValue || new Date().toISOString().split("T")[0],
+              prompt: `Variable: ${variable.name}`,
+            });
+          }
+          break;
+
+        case "selection":
+          if (value === undefined) {
+            if (variable.options && variable.options.length > 0) {
+              const selectionOptions = variable.options.map((option) => ({
+                label: option,
+                description: `Option: ${option}`,
+              }));
+              const selectionChoice = await vscode.window.showQuickPick(
+                selectionOptions,
+                {
+                  title: `Select ${variable.name}`,
+                  placeHolder:
+                    variable.description || `Select option for ${variable.name}`,
+                }
+              );
+              value = selectionChoice?.label;
+            } else {
+              value = await vscode.window.showInputBox({
+                title: `Enter ${variable.name}`,
+                placeHolder:
+                  variable.description || `Enter value for ${variable.name}`,
+                value: variable.defaultValue,
+                prompt: `Variable: ${variable.name}`,
+              });
+            }
+          }
+          break;
+
         case "file":
-          const fileUris = await vscode.window.showOpenDialog({
-            canSelectFiles: true,
-            canSelectFolders: false,
-            canSelectMany: false,
-            title: `Select file for ${variable.name}`,
-          });
-          value = fileUris?.[0]?.fsPath;
+          if (value === undefined) {
+            const fileUris = await vscode.window.showOpenDialog({
+              canSelectFiles: true,
+              canSelectFolders: false,
+              canSelectMany: false,
+              title: `Select file for ${variable.name}`,
+            });
+            value = fileUris?.[0]?.fsPath;
+          }
           break;
 
         case "context":
-          value = await this.getContextValue(variable.name);
+          value = await this.getContextValue(variable.name, selectedTextContext);
           break;
 
         default:
-          value = await vscode.window.showInputBox({
-            title: `Enter ${variable.name}`,
-            placeHolder:
-              variable.description || `Enter value for ${variable.name}`,
-            value: variable.defaultValue,
-            prompt: `Variable: ${variable.name}`,
-          });
+          if (value === undefined) {
+            value = await vscode.window.showInputBox({
+              title: `Enter ${variable.name}`,
+              placeHolder:
+                variable.description || `Enter value for ${variable.name}`,
+              value: variable.defaultValue,
+              prompt: `Variable: ${variable.name}`,
+            });
+          }
       }
 
       if (value === undefined) {
@@ -423,14 +447,15 @@ export class QuickPickerService {
     return content;
   }
 
-  private async getContextValue(variableName: string): Promise<string> {
+  private async getContextValue(
+    variableName: string,
+    selectedTextContext = getSelectedTextVariableContext()
+  ): Promise<string> {
     const editor = vscode.window.activeTextEditor;
 
     switch (variableName) {
       case "selectedText":
-        return editor?.selection && !editor.selection.isEmpty
-          ? editor.document.getText(editor.selection)
-          : "";
+        return selectedTextContext.selectedText;
 
       case "fileName":
         return editor?.document.fileName.split("/").pop() || "";

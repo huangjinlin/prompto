@@ -1,20 +1,42 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import { MarkdownPromptCodeLensProvider } from "./providers/MarkdownPromptCodeLensProvider";
 import { PromptTreeProvider } from "./providers/PromptTreeProvider";
 import { deliverPromptContent } from "./services/PromptDeliveryService";
 import {
   getPromptDirectoryPath,
   getPromptDirectorySetting,
+  resolvePromptFilePath,
 } from "./services/PromptDirectoryService";
+import {
+  getSelectedTextVariableContext,
+  SelectedTextVariableContext,
+} from "./services/SelectedTextVariableService";
+import {
+  getMarkdownPromptBlockAtHeadingLine,
+  getSelectedTextContextForMarkdownPromptBlock,
+} from "./services/MarkdownPromptBlockService";
 
 let treeProvider: PromptTreeProvider;
+
+interface PromptExecutionContext {
+  sourceDocument?: vscode.TextDocument;
+  selectedTextContext?: SelectedTextVariableContext;
+  workspaceFolder?: vscode.WorkspaceFolder;
+}
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("🚀 Prompto extension is now active!");
 
   treeProvider = new PromptTreeProvider();
   vscode.window.registerTreeDataProvider("promptoTree", treeProvider);
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      { language: "markdown" },
+      new MarkdownPromptCodeLensProvider()
+    )
+  );
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("prompto.promptsDirectory")) {
@@ -43,6 +65,13 @@ function registerCommands(context: vscode.ExtensionContext) {
     ),
 
     vscode.commands.registerCommand(
+      "prompto.runMarkdownBlock",
+      async (documentUri: vscode.Uri, headingLine: number) => {
+        await runMarkdownPromptBlock(documentUri, headingLine);
+      }
+    ),
+
+    vscode.commands.registerCommand(
       "prompto.addPrompt",
       async (categoryPath?: string) => {
         await showAddPromptDialog(categoryPath);
@@ -51,15 +80,24 @@ function registerCommands(context: vscode.ExtensionContext) {
   );
 }
 
-async function showPromptPicker(): Promise<void> {
+async function showPromptPicker(
+  executionContext: PromptExecutionContext = {}
+): Promise<void> {
   try {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    const workspaceFolder =
+      executionContext.workspaceFolder ??
+      (executionContext.sourceDocument
+        ? vscode.workspace.getWorkspaceFolder(executionContext.sourceDocument.uri)
+        : undefined) ??
+      vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
       vscode.window.showErrorMessage("No workspace folder found");
       return;
     }
 
     const promptoDir = getPromptDirectoryPath(workspaceFolder);
+    const selectedTextContext =
+      executionContext.selectedTextContext ?? getSelectedTextVariableContext();
     if (!fs.existsSync(promptoDir)) {
       const action = await vscode.window.showInformationMessage(
         `Prompt directory not found: ${getPromptDirectorySetting()} (${promptoDir})`,
@@ -83,7 +121,61 @@ async function showPromptPicker(): Promise<void> {
       return;
     }
 
-    await navigatePromptDirectoryWithGlobalSearch(promptoDir, "");
+    if (selectedTextContext.promptReference) {
+      const resolvedPromptPath = resolvePromptFilePath(
+        workspaceFolder,
+        selectedTextContext.promptReference
+      );
+
+      if (!resolvedPromptPath) {
+        const action = await vscode.window.showErrorMessage(
+          `Invalid prompt reference: ${selectedTextContext.promptReference}`,
+          "Choose Prompt"
+        );
+
+        if (action !== "Choose Prompt") {
+          return;
+        }
+        executionContext = {
+          ...executionContext,
+          workspaceFolder,
+          selectedTextContext: {
+            ...selectedTextContext,
+            promptReference: undefined,
+          },
+        };
+      } else if (!fs.existsSync(resolvedPromptPath)) {
+        const action = await vscode.window.showErrorMessage(
+          `Prompt file not found: ${selectedTextContext.promptReference}`,
+          "Choose Prompt"
+        );
+
+        if (action !== "Choose Prompt") {
+          return;
+        }
+        executionContext = {
+          ...executionContext,
+          workspaceFolder,
+          selectedTextContext: {
+            ...selectedTextContext,
+            promptReference: undefined,
+          },
+        };
+      } else {
+        await usePrompt(resolvedPromptPath, {
+          ...executionContext,
+          workspaceFolder,
+          selectedTextContext,
+        });
+        return;
+      }
+    }
+
+    await navigatePromptDirectoryWithGlobalSearch(
+      promptoDir,
+      "",
+      executionContext
+    );
   } catch (error) {
     vscode.window.showErrorMessage(`Error showing prompt picker: ${error}`);
   }
@@ -114,7 +206,8 @@ function getAllPromptsRecursive(
 
 async function navigatePromptDirectoryWithGlobalSearch(
   currentPath: string,
-  relativePath: string
+  relativePath: string,
+  executionContext: PromptExecutionContext = {}
 ): Promise<void> {
   try {
     const allPrompts = getAllPromptsRecursive(currentPath, relativePath).map(
@@ -217,7 +310,8 @@ async function navigatePromptDirectoryWithGlobalSearch(
         const parentRelativePath = path.dirname(relativePath);
         await navigatePromptDirectoryWithGlobalSearch(
           parentPath,
-          parentRelativePath === "." ? "" : parentRelativePath
+          parentRelativePath === "." ? "" : parentRelativePath,
+          executionContext
         );
       } else if (
         (selected as any).isDirectory &&
@@ -231,10 +325,11 @@ async function navigatePromptDirectoryWithGlobalSearch(
           : path.basename((selected as any).directoryPath);
         await navigatePromptDirectoryWithGlobalSearch(
           (selected as any).directoryPath,
-          newRelativePath
+          newRelativePath,
+          executionContext
         );
       } else if ((selected as any).promptPath) {
-        await usePrompt((selected as any).promptPath);
+        await usePrompt((selected as any).promptPath, executionContext);
       }
     });
 
@@ -276,17 +371,20 @@ function getPromptContent(filePath: string): string {
   }
 }
 
-async function processPromptVariables(content: string): Promise<string | null> {
+async function processPromptVariables(
+  content: string,
+  executionContext: PromptExecutionContext = {}
+): Promise<string | null> {
   try {
     let processedContent: string = content;
+    const editor = vscode.window.activeTextEditor;
+    const selectedTextContext =
+      executionContext.selectedTextContext ?? getSelectedTextVariableContext(editor);
+    const sourceDocument = executionContext.sourceDocument ?? editor?.document;
 
     // Handle selectedText
     if (content.includes("{{selectedText}}")) {
-      const editor = vscode.window.activeTextEditor;
-      const selectedText =
-        editor?.selection && !editor.selection.isEmpty
-          ? editor.document.getText(editor.selection)
-          : "";
+      const selectedText = selectedTextContext.selectedText;
 
       if (!selectedText) {
         const useEmpty = await vscode.window.showQuickPick(
@@ -311,9 +409,8 @@ async function processPromptVariables(content: string): Promise<string | null> {
 
     // Handle fileName
     if (content.includes("{{fileName}}")) {
-      const editor = vscode.window.activeTextEditor;
-      const fileName = editor?.document.fileName
-        ? path.basename(editor.document.fileName)
+      const fileName = sourceDocument?.fileName
+        ? path.basename(sourceDocument.fileName)
         : "";
       processedContent = processedContent.replace(
         /\{\{fileName\}\}/g,
@@ -337,6 +434,15 @@ async function processPromptVariables(content: string): Promise<string | null> {
 
       // Prompt for each unique variable
       for (const varName of uniqueVars) {
+        const providedValue = selectedTextContext.variables[varName];
+        if (providedValue !== undefined) {
+          processedContent = processedContent.replace(
+            new RegExp(`\\{\\{${varName}\\}\\}`, "g"),
+            providedValue
+          );
+          continue;
+        }
+
         const value = await vscode.window.showInputBox({
           title: `Variable: ${varName}`,
           placeHolder: `Enter value for ${varName}`,
@@ -361,7 +467,10 @@ async function processPromptVariables(content: string): Promise<string | null> {
   }
 }
 
-async function usePrompt(promptPath: string): Promise<void> {
+async function usePrompt(
+  promptPath: string,
+  executionContext: PromptExecutionContext = {}
+): Promise<void> {
   try {
     const promptName = path.basename(promptPath, ".md");
     const content = getPromptContent(promptPath);
@@ -373,7 +482,7 @@ async function usePrompt(promptPath: string): Promise<void> {
 
     let processedContent: string = content;
     if (content.includes("{{")) {
-      const result = await processPromptVariables(content);
+      const result = await processPromptVariables(content, executionContext);
       if (result === null) return;
       processedContent = result;
     }
@@ -439,6 +548,10 @@ Write your prompt content here...
 <!-- Instructions (will be ignored when using the prompt):
 - Use multiple lines naturally
 - Add {{selectedText}} for dynamic content
+- You can define selected-text variables with a header block like:
+- ---
+- codeAspect: performance
+- ---
 - Be specific and detailed
 - Save the file when finished
 -->
@@ -458,5 +571,39 @@ Write your prompt content here...
     treeProvider.refresh();
   } catch (error) {
     vscode.window.showErrorMessage(`Error creating prompt: ${error}`);
+  }
+}
+
+async function runMarkdownPromptBlock(
+  documentUri: vscode.Uri,
+  headingLine: number
+): Promise<void> {
+  try {
+    const sourceDocument = await vscode.workspace.openTextDocument(documentUri);
+    const promptBlock = getMarkdownPromptBlockAtHeadingLine(
+      sourceDocument,
+      headingLine
+    );
+
+    if (!promptBlock) {
+      vscode.window.showErrorMessage(
+        "Prompto block not found. Try saving the file or reopening the editor."
+      );
+      return;
+    }
+
+    const workspaceFolder =
+      vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
+      vscode.workspace.workspaceFolders?.[0];
+
+    await showPromptPicker({
+      sourceDocument,
+      workspaceFolder,
+      selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(
+        promptBlock
+      ),
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(`Error running Prompto block: ${error}`);
   }
 }

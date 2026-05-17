@@ -28,3 +28,37 @@ export function getPromptDirectoryPath(
 
   return resolvedPath;
 }
+
+export function resolvePromptFilePath(
+  workspaceFolder: vscode.WorkspaceFolder,
+  promptReference: string
+): string | undefined {
+  const promptDirectoryPath = getPromptDirectoryPath(workspaceFolder);
+  const normalizedReference = promptReference.trim().replace(/\\/g, "/");
+
+  if (!normalizedReference) {
+    return undefined;
+  }
+
+  const promptReferenceWithExtension = path.extname(normalizedReference)
+    ? normalizedReference
+    : `${normalizedReference}.md`;
+
+  const resolvedPromptPath = path.resolve(
+    promptDirectoryPath,
+    promptReferenceWithExtension
+  );
+  const relativePromptPath = path.relative(
+    promptDirectoryPath,
+    resolvedPromptPath
+  );
+
+  if (
+    relativePromptPath.startsWith("..") ||
+    path.isAbsolute(relativePromptPath)
+  ) {
+    return undefined;
+  }
+
+  return resolvedPromptPath;
+}
