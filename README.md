@@ -8,7 +8,7 @@ Keep your prompts tidy, searchable, and ready to use — all from a clean file-b
 
 - **📁 File-based Storage**: Prompts stored as `.md` files in the configured prompt directory
 - **🗂️ Flexible Organization**: Create any directory structure you want
-- **⚡ Quick Access**: Use `Ctrl+Alt+P` to instantly select and use any prompt in Copilot Chat
+- **⚡ Quick Access**: Use `Ctrl+Alt+P` to instantly select and use any prompt in your configured chat target
 - **📝 Natural Editing**: Edit prompts using editors's markdown editor
 - **🔧 Variable Support**: Dynamic variables like `{{selectedText}}`, `{{fileName}}`
 
@@ -24,7 +24,7 @@ Keep your prompts tidy, searchable, and ready to use — all from a clean file-b
 ### 2. Use a Prompt
 
 1. **Press `Ctrl+Alt+P`** → Prompt picker appears
-2. **Select a prompt** → Content is filled into GitHub Copilot Chat
+2. **Select a prompt** → Content is delivered to your configured chat target
 3. **Review and send** your prompt when ready
 
 ## 📁 File Structure
@@ -49,9 +49,13 @@ Your prompts are organized in the configured prompt directory. By default this i
 ## ⚙️ Settings
 
 - **`prompto.outputMode`** - Controls what happens after selecting a prompt:
-    - `chatPrefill` (default) - fill the prompt into GitHub Copilot Chat without sending it
+    - `chatPrefill` (default) - fill the prompt into the configured chat target without sending it
     - `chatSubmit` - fill and send the prompt immediately
     - `clipboard` - copy the prompt to the clipboard
+- **`prompto.deliveryTarget`** - Chooses where prompts are delivered:
+    - `githubCopilotChat` (default) - deliver to GitHub Copilot Chat
+    - `continue` - deliver to Continue through the Prompto control command in your Continue fork
+- **`prompto.continueSessionId`** - Optional Continue session ID to focus before delivery. Leave empty to use the current Continue session.
 - **`prompto.promptsDirectory`** - Workspace-relative folder where prompt markdown files are stored. Defaults to `.prompto`.
 
 ## 🔧 Prompt Format

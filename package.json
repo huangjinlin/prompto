@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -89,11 +89,29 @@
             "clipboard"
           ],
           "enumDescriptions": [
-            "Open Copilot Chat and fill the selected prompt without sending it.",
-            "Open Copilot Chat and send the selected prompt immediately.",
+            "Fill the selected prompt into the configured chat target without sending it.",
+            "Send the selected prompt immediately to the configured chat target.",
             "Copy the selected prompt to the clipboard."
           ],
           "markdownDescription": "Controls what happens after selecting a prompt with **Prompto: Use Prompt**."
+        },
+        "prompto.deliveryTarget": {
+          "type": "string",
+          "default": "githubCopilotChat",
+          "enum": [
+            "githubCopilotChat",
+            "continue"
+          ],
+          "enumDescriptions": [
+            "Deliver prompts to GitHub Copilot Chat.",
+            "Deliver prompts to Continue through its Prompto control command."
+          ],
+          "markdownDescription": "Selects which chat surface receives prompts when **Prompto: Use Prompt** runs."
+        },
+        "prompto.continueSessionId": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional Continue session ID to focus before Prompto delivers a prompt. Leave empty to use the current Continue session."
         },
         "prompto.promptsDirectory": {
           "type": "string",
