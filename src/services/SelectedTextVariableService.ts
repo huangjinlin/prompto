@@ -5,6 +5,7 @@ export interface SelectedTextVariableContext {
   selectedText: string;
   variables: Record<string, string>;
   promptReference?: string;
+  inlinePromptContent?: string;
 }
 
 export function getSelectedTextVariableContext(
@@ -30,6 +31,7 @@ export function parseSelectedTextVariableContext(
       selectedText: normalizedSelection,
       variables: {},
       promptReference: undefined,
+      inlinePromptContent: undefined,
     };
   }
 
@@ -43,6 +45,7 @@ export function parseSelectedTextVariableContext(
       selectedText: normalizedSelection,
       variables: {},
       promptReference: undefined,
+      inlinePromptContent: undefined,
     };
   }
 
@@ -61,6 +64,7 @@ export function parseSelectedTextVariableContext(
         selectedText: normalizedSelection,
         variables: {},
         promptReference: undefined,
+        inlinePromptContent: undefined,
       };
     }
 
@@ -83,5 +87,6 @@ export function parseSelectedTextVariableContext(
     selectedText,
     variables,
     promptReference,
+    inlinePromptContent: undefined,
   };
 }

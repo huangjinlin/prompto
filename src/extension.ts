@@ -5,7 +5,10 @@ import { MarkdownPromptCodeLensProvider } from "./providers/MarkdownPromptCodeLe
 import { PromptTreeProvider } from "./providers/PromptTreeProvider";
 import {
   deliverPromptContent,
+  parsePromptDeliveryTarget,
+  prefillActiveTerminal,
   PromptDeliveryOptions,
+  PromptDeliveryTarget,
 } from "./services/PromptDeliveryService";
 import {
   getPromptDirectoryPath,
@@ -17,7 +20,9 @@ import {
   SelectedTextVariableContext,
 } from "./services/SelectedTextVariableService";
 import {
+  getMarkdownPromptActionAtLine,
   getMarkdownPromptBlockAtHeadingLine,
+  getSelectedTextContextForMarkdownPromptAction,
   getSelectedTextContextForMarkdownPromptBlock,
 } from "./services/MarkdownPromptBlockService";
 
@@ -29,9 +34,12 @@ const PROMPTO_FILE_METADATA_KEY_VALUE_REGEX =
   /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)\s*$/;
 
 interface PromptExecutionContext {
+  promptName?: string;
   sourceDocument?: vscode.TextDocument;
   selectedTextContext?: SelectedTextVariableContext;
   deliveryOptions?: PromptDeliveryOptions;
+  promptHandler?: PromptHandler;
+  suppressNoSelectedTextPrompt?: boolean;
   workspaceFolder?: vscode.WorkspaceFolder;
 }
 
@@ -39,6 +47,12 @@ interface ParsedPromptFile {
   content: string;
   deliveryOptions: PromptDeliveryOptions;
 }
+
+type PromptHandler = (
+  promptName: string,
+  promptContent: string,
+  deliveryOptions?: PromptDeliveryOptions
+) => Promise<void>;
 
 function getPromptDocumentContent(
   filePath: string,
@@ -65,19 +79,42 @@ function normalizePromptDeliveryValue(
   return trimmedValue ? trimmedValue : undefined;
 }
 
+function parsePromptMetadataDeliveryTarget(
+  value: string | undefined
+): PromptDeliveryTarget | undefined {
+  const normalizedValue = normalizePromptDeliveryValue(value);
+  const deliveryTarget = parsePromptDeliveryTarget(normalizedValue);
+
+  if (!deliveryTarget && normalizedValue) {
+    throw new Error(
+      `Invalid Prompto deliveryTarget: ${normalizedValue}. Use githubCopilotChat, continue, or claudeCode.`
+    );
+  }
+
+  return deliveryTarget;
+}
+
 function mergePromptDeliveryOptions(
   promptFileDeliveryOptions: PromptDeliveryOptions,
   executionContextDeliveryOptions: PromptDeliveryOptions = {}
 ): PromptDeliveryOptions {
+  const deliveryTarget =
+    executionContextDeliveryOptions.deliveryTarget ??
+    promptFileDeliveryOptions.deliveryTarget;
+
   const continueSessionId =
     normalizePromptDeliveryValue(executionContextDeliveryOptions.continueSessionId) ??
     normalizePromptDeliveryValue(promptFileDeliveryOptions.continueSessionId);
 
   if (continueSessionId) {
-    return { continueSessionId };
+    return {
+      deliveryTarget,
+      continueSessionId,
+    };
   }
 
   return {
+    deliveryTarget,
     continueSessionTitle:
       normalizePromptDeliveryValue(
         executionContextDeliveryOptions.continueSessionTitle
@@ -125,9 +162,31 @@ function registerCommands(context: vscode.ExtensionContext) {
     ),
 
     vscode.commands.registerCommand(
+      "prompto.prefillActiveTerminal",
+      async (promptPath?: string) => {
+        if (promptPath) {
+          await usePrompt(promptPath, {
+            promptHandler: prefillActiveTerminal,
+          });
+        } else {
+          await showPromptPicker({
+            promptHandler: prefillActiveTerminal,
+          });
+        }
+      }
+    ),
+
+    vscode.commands.registerCommand(
       "prompto.runMarkdownBlock",
       async (documentUri: vscode.Uri, headingLine: number) => {
         await runMarkdownPromptBlock(documentUri, headingLine);
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      "prompto.runMarkdownAction",
+      async (documentUri: vscode.Uri, anchorLine: number) => {
+        await runMarkdownPromptAction(documentUri, anchorLine);
       }
     ),
 
@@ -144,6 +203,29 @@ async function showPromptPicker(
   executionContext: PromptExecutionContext = {}
 ): Promise<void> {
   try {
+    const selectedTextContext =
+      executionContext.selectedTextContext ?? getSelectedTextVariableContext();
+
+    if (
+      selectedTextContext.promptReference &&
+      selectedTextContext.inlinePromptContent
+    ) {
+      vscode.window.showErrorMessage(
+        "Prompto metadata cannot define both prompt and promptContent."
+      );
+      return;
+    }
+
+    if (selectedTextContext.inlinePromptContent) {
+      await executePromptContent(
+        executionContext.promptName ?? "Markdown Block",
+        selectedTextContext.inlinePromptContent,
+        {},
+        executionContext
+      );
+      return;
+    }
+
     const workspaceFolder =
       executionContext.workspaceFolder ??
       (executionContext.sourceDocument
@@ -156,8 +238,6 @@ async function showPromptPicker(
     }
 
     const promptoDir = getPromptDirectoryPath(workspaceFolder);
-    const selectedTextContext =
-      executionContext.selectedTextContext ?? getSelectedTextVariableContext();
     if (!fs.existsSync(promptoDir)) {
       const action = await vscode.window.showInformationMessage(
         `Prompt directory not found: ${getPromptDirectorySetting()} (${promptoDir})`,
@@ -499,6 +579,9 @@ function getPromptFile(
   return {
     content: promptContent.trim(),
     deliveryOptions: {
+      deliveryTarget: parsePromptMetadataDeliveryTarget(
+        metadata?.values.deliveryTarget
+      ),
       continueSessionId: metadata?.values.continueSessionId?.trim(),
       continueSessionTitle: metadata?.values.continueSessionTitle?.trim(),
     },
@@ -520,7 +603,7 @@ async function processPromptVariables(
     if (content.includes("{{selectedText}}")) {
       const selectedText = selectedTextContext.selectedText;
 
-      if (!selectedText) {
+      if (!selectedText && !executionContext.suppressNoSelectedTextPrompt) {
         const useEmpty = await vscode.window.showQuickPick(
           ["Use empty value", "Cancel"],
           {
@@ -601,6 +684,38 @@ async function processPromptVariables(
   }
 }
 
+async function executePromptContent(
+  promptName: string,
+  content: string,
+  promptDeliveryOptions: PromptDeliveryOptions = {},
+  executionContext: PromptExecutionContext = {}
+): Promise<void> {
+  if (!content) {
+    vscode.window.showErrorMessage("Prompt is empty");
+    return;
+  }
+
+  let processedContent: string = content;
+  if (content.includes("{{")) {
+    const result = await processPromptVariables(content, executionContext);
+    if (result === null) {
+      return;
+    }
+    processedContent = result;
+  }
+
+  const promptHandler = executionContext.promptHandler ?? deliverPromptContent;
+
+  await promptHandler(
+    promptName,
+    processedContent,
+    mergePromptDeliveryOptions(
+      promptDeliveryOptions,
+      executionContext.deliveryOptions
+    )
+  );
+}
+
 async function usePrompt(
   promptPath: string,
   executionContext: PromptExecutionContext = {}
@@ -611,27 +726,11 @@ async function usePrompt(
       promptPath,
       executionContext.sourceDocument
     );
-    const content = promptFile.content;
-
-    if (!content) {
-      vscode.window.showErrorMessage("Prompt is empty");
-      return;
-    }
-
-    let processedContent: string = content;
-    if (content.includes("{{")) {
-      const result = await processPromptVariables(content, executionContext);
-      if (result === null) return;
-      processedContent = result;
-    }
-
-    await deliverPromptContent(
+    await executePromptContent(
       promptName,
-      processedContent,
-      mergePromptDeliveryOptions(
-        promptFile.deliveryOptions,
-        executionContext.deliveryOptions
-      )
+      promptFile.content,
+      promptFile.deliveryOptions,
+      executionContext
     );
   } catch (error) {
     vscode.window.showErrorMessage(`Error using prompt: ${error}`);
@@ -694,9 +793,10 @@ Write your prompt content here...
 - Use multiple lines naturally
 - Optional prompt-level metadata can be added above the body like:
 - <!-- prompto
+  - deliveryTarget: continue
 - continueSessionTitle: My Continue Session
 - -->
-- continueSessionTitle overrides User Settings for this prompt only
+  - deliveryTarget overrides User Settings for this prompt only
 - Add {{selectedText}} for dynamic content
 - You can define selected-text variables with a header block like:
 - ---
@@ -747,8 +847,12 @@ async function runMarkdownPromptBlock(
       vscode.workspace.workspaceFolders?.[0];
 
     await showPromptPicker({
+      promptName: promptBlock.headingText,
       sourceDocument,
       deliveryOptions: {
+        deliveryTarget: parsePromptMetadataDeliveryTarget(
+          promptBlock.variables.deliveryTarget
+        ),
         continueSessionId: promptBlock.variables.continueSessionId,
         continueSessionTitle: promptBlock.variables.continueSessionTitle,
       },
@@ -759,5 +863,45 @@ async function runMarkdownPromptBlock(
     });
   } catch (error) {
     vscode.window.showErrorMessage(`Error running Prompto block: ${error}`);
+  }
+}
+
+async function runMarkdownPromptAction(
+  documentUri: vscode.Uri,
+  anchorLine: number
+): Promise<void> {
+  try {
+    const sourceDocument = await vscode.workspace.openTextDocument(documentUri);
+    const promptAction = getMarkdownPromptActionAtLine(sourceDocument, anchorLine);
+
+    if (!promptAction) {
+      vscode.window.showErrorMessage(
+        "Prompto action not found. Try saving the file or reopening the editor."
+      );
+      return;
+    }
+
+    const workspaceFolder =
+      vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
+      vscode.workspace.workspaceFolders?.[0];
+
+    await showPromptPicker({
+      promptName: promptAction.title,
+      sourceDocument,
+      deliveryOptions: {
+        deliveryTarget: parsePromptMetadataDeliveryTarget(
+          promptAction.variables.deliveryTarget
+        ),
+        continueSessionId: promptAction.variables.continueSessionId,
+        continueSessionTitle: promptAction.variables.continueSessionTitle,
+      },
+      suppressNoSelectedTextPrompt: true,
+      workspaceFolder,
+      selectedTextContext: getSelectedTextContextForMarkdownPromptAction(
+        promptAction
+      ),
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(`Error running Prompto action: ${error}`);
   }
 }

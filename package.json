@@ -29,6 +29,11 @@
         "icon": "$(play)"
       },
       {
+        "command": "prompto.prefillActiveTerminal",
+        "title": "Prompto: Prefill Active Terminal",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "prompto.addPrompt",
         "title": "Prompto: Add New Prompt",
         "icon": "$(add)"
@@ -56,11 +61,20 @@
           "command": "prompto.usePrompt",
           "when": "view == promptoTree && viewItem == prompt",
           "group": "prompt@1"
+        },
+        {
+          "command": "prompto.prefillActiveTerminal",
+          "when": "view == promptoTree && viewItem == prompt",
+          "group": "prompt@2"
         }
       ],
       "commandPalette": [
         {
           "command": "prompto.usePrompt",
+          "when": "true"
+        },
+        {
+          "command": "prompto.prefillActiveTerminal",
           "when": "true"
         },
         {
@@ -100,13 +114,15 @@
           "default": "githubCopilotChat",
           "enum": [
             "githubCopilotChat",
-            "continue"
+            "continue",
+            "claudeCode"
           ],
           "enumDescriptions": [
             "Deliver prompts to GitHub Copilot Chat.",
-            "Deliver prompts to Continue through its Prompto control command."
+            "Deliver prompts to Continue through its Prompto control command.",
+            "Deliver prompts to the active terminal, intended for Claude Code."
           ],
-          "markdownDescription": "Selects which chat surface receives prompts when **Prompto: Use Prompt** runs."
+          "markdownDescription": "Selects which chat surface receives prompts when **Prompto: Use Prompt** runs. Prompt metadata can override this with `deliveryTarget`."
         },
         "prompto.continueSessionId": {
           "type": "string",

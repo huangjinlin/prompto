@@ -44,6 +44,7 @@ Your prompts are organized in the configured prompt directory. By default this i
 ### Essential Commands
 
 - **`Prompto: Use Prompt`** (`Ctrl+Alt+P`) - Quick picker to select and use any prompt
+- **`Prompto: Prefill Active Terminal`** - Paste the selected prompt into the current terminal without sending it
 - **`Prompto: Add New Prompt`** - Create a new prompt file
 
 ## ⚙️ Settings
@@ -55,6 +56,7 @@ Your prompts are organized in the configured prompt directory. By default this i
 - **`prompto.deliveryTarget`** - Chooses where prompts are delivered:
     - `githubCopilotChat` (default) - deliver to GitHub Copilot Chat
     - `continue` - deliver to Continue through the Prompto control command in your Continue fork
+    - `claudeCode` - paste the prompt into the active terminal, intended for Claude Code
 - **`prompto.continueSessionId`** - Optional Continue session ID to focus before delivery. Leave empty to use the current Continue session. This takes priority over `prompto.continueSessionTitle`.
 - **`prompto.continueSessionTitle`** - Optional Continue session title to resolve before delivery. Used only when `prompto.continueSessionId` is empty, and it must match exactly one Continue session title.
 - **`prompto.promptsDirectory`** - Workspace-relative folder where prompt markdown files are stored. Defaults to `.prompto`.
@@ -67,6 +69,7 @@ Each prompt is a simple markdown file:
 # My Prompt Name
 
 <!-- prompto
+deliveryTarget: continue
 continueSessionTitle: My Continue Session
 -->
 
@@ -83,7 +86,47 @@ Use {{customVariable}} for user input.
 -->
 ```
 
-When `prompto.deliveryTarget` is set to `continue`, prompt-file metadata can override workspace-level Continue targeting for that prompt. `continueSessionTitle` takes precedence over the User Settings values for `prompto.continueSessionId` and `prompto.continueSessionTitle` for that one prompt file.
+When prompt metadata includes `deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt. When the resolved target is `continue`, prompt metadata can also override workspace-level Continue targeting for that prompt. `continueSessionId` takes precedence over `continueSessionTitle`.
+
+Markdown prompt blocks can either reference a saved prompt file with `prompt`, or define prompt text inline with `promptContent`:
+
+```markdown
+## Review This Snippet
+
+<!-- prompto
+deliveryTarget: claudeCode
+promptContent: |
+    Review the selected content and report:
+    1. Risks
+    2. Suggested fixes
+    3. Merge recommendation
+
+    Content:
+    {{selectedText}}
+-->
+
+Paste or write the content to review here.
+```
+
+Use either `prompt` or `promptContent` in a markdown block, but not both. The block body still becomes `{{selectedText}}`.
+
+Markdown files can also define explicit inline actions in the body with `prompto-action`:
+
+```markdown
+<!-- prompto-action
+title: Summarize This Section
+promptContent: |
+    Summarize the current context and report:
+    1. Key points
+    2. Risks
+    3. Next steps
+deliveryTarget: claudeCode
+-->
+
+This paragraph is only the action anchor for CodeLens display.
+```
+
+`prompto-action` is separate from heading-based prompt blocks. It does not provide `{{selectedText}}`, does not inherit outer block routing, and requires its own explicit metadata.
 
 ## 💡 Variables
 

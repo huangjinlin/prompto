@@ -1,11 +1,80 @@
 import * as vscode from "vscode";
 
 type PromptOutputMode = "chatPrefill" | "chatSubmit" | "clipboard";
-type PromptDeliveryTarget = "githubCopilotChat" | "continue";
+export type PromptDeliveryTarget =
+  | "githubCopilotChat"
+  | "continue"
+  | "claudeCode";
 
 export interface PromptDeliveryOptions {
+  deliveryTarget?: PromptDeliveryTarget;
   continueSessionId?: string;
   continueSessionTitle?: string;
+}
+
+export function parsePromptDeliveryTarget(
+  value: string | undefined
+): PromptDeliveryTarget | undefined {
+  const normalizedValue = normalizeOptionalValue(value);
+
+  if (
+    normalizedValue === "githubCopilotChat" ||
+    normalizedValue === "continue" ||
+    normalizedValue === "claudeCode"
+  ) {
+    return normalizedValue;
+  }
+
+  return undefined;
+}
+
+async function pasteIntoActiveTerminal(
+  promptContent: string,
+  submitImmediately: boolean
+): Promise<boolean> {
+  const activeTerminal = vscode.window.activeTerminal;
+
+  if (!activeTerminal) {
+    return false;
+  }
+
+  const previousClipboardText = await vscode.env.clipboard.readText();
+
+  try {
+    await vscode.env.clipboard.writeText(promptContent);
+    activeTerminal.show(false);
+    await vscode.commands.executeCommand("workbench.action.terminal.paste");
+
+    if (submitImmediately) {
+      activeTerminal.sendText("", true);
+    }
+
+    return true;
+  } catch (error) {
+    console.warn("Failed to paste prompt into active terminal", error);
+    return false;
+  } finally {
+    await vscode.env.clipboard.writeText(previousClipboardText);
+  }
+}
+
+export async function prefillActiveTerminal(
+  promptName: string,
+  promptContent: string,
+  _deliveryOptions: PromptDeliveryOptions = {}
+): Promise<void> {
+  const pasted = await pasteIntoActiveTerminal(promptContent, false);
+
+  if (!pasted) {
+    vscode.window.showErrorMessage(
+      "No active terminal found. Focus a terminal and try again."
+    );
+    return;
+  }
+
+  vscode.window.showInformationMessage(
+    `Prompt "${promptName}" pasted into the active terminal without sending.`
+  );
 }
 
 const DEFAULT_PROMPT_OUTPUT_MODE: PromptOutputMode = "chatPrefill";
@@ -38,14 +107,16 @@ function getPromptDeliveryTarget(): PromptDeliveryTarget {
     .getConfiguration("prompto")
     .get<string>("deliveryTarget", DEFAULT_PROMPT_DELIVERY_TARGET);
 
-  if (
-    configuredTarget === "githubCopilotChat" ||
-    configuredTarget === "continue"
-  ) {
-    return configuredTarget;
-  }
+  return (
+    parsePromptDeliveryTarget(configuredTarget) ??
+    DEFAULT_PROMPT_DELIVERY_TARGET
+  );
+}
 
-  return DEFAULT_PROMPT_DELIVERY_TARGET;
+function resolvePromptDeliveryTarget(
+  deliveryOptions: PromptDeliveryOptions = {}
+): PromptDeliveryTarget {
+  return deliveryOptions.deliveryTarget ?? getPromptDeliveryTarget();
 }
 
 function getContinueSessionId(): string | undefined {
@@ -139,6 +210,13 @@ async function openContinueChat(
   }
 }
 
+async function openClaudeCode(
+  promptContent: string,
+  submitImmediately: boolean
+): Promise<boolean> {
+  return await pasteIntoActiveTerminal(promptContent, submitImmediately);
+}
+
 async function copyPromptToClipboard(
   promptName: string,
   promptContent: string,
@@ -164,7 +242,7 @@ export async function deliverPromptContent(
   deliveryOptions: PromptDeliveryOptions = {}
 ): Promise<void> {
   const outputMode = getPromptOutputMode();
-  const deliveryTarget = getPromptDeliveryTarget();
+  const deliveryTarget = resolvePromptDeliveryTarget(deliveryOptions);
 
   if (outputMode === "clipboard") {
     await copyPromptToClipboard(promptName, promptContent);
@@ -179,18 +257,28 @@ export async function deliverPromptContent(
           submitImmediately,
           deliveryOptions
         )
+      : deliveryTarget === "claudeCode"
+      ? await openClaudeCode(promptContent, submitImmediately)
       : await openCopilotChat(promptContent, submitImmediately);
 
   if (!openedChat) {
     const fallbackTarget =
-      deliveryTarget === "continue" ? "Continue" : "Copilot Chat";
+      deliveryTarget === "continue"
+        ? "Continue"
+        : deliveryTarget === "claudeCode"
+        ? "Claude Code"
+        : "Copilot Chat";
     await copyPromptToClipboard(promptName, promptContent, fallbackTarget);
     return;
   }
 
   const action = submitImmediately ? "sent to" : "filled in";
   const targetLabel =
-    deliveryTarget === "continue" ? "Continue" : "Copilot Chat";
+    deliveryTarget === "continue"
+      ? "Continue"
+      : deliveryTarget === "claudeCode"
+      ? "Claude Code"
+      : "Copilot Chat";
   vscode.window.showInformationMessage(
     `Prompt "${promptName}" ${action} ${targetLabel}.`
   );
