@@ -3,9 +3,19 @@ import * as vscode from "vscode";
 type PromptOutputMode = "chatPrefill" | "chatSubmit" | "clipboard";
 type PromptDeliveryTarget = "githubCopilotChat" | "continue";
 
+export interface PromptDeliveryOptions {
+  continueSessionId?: string;
+  continueSessionTitle?: string;
+}
+
 const DEFAULT_PROMPT_OUTPUT_MODE: PromptOutputMode = "chatPrefill";
 const DEFAULT_PROMPT_DELIVERY_TARGET: PromptDeliveryTarget =
   "githubCopilotChat";
+
+function normalizeOptionalValue(value: string | undefined): string | undefined {
+  const trimmedValue = value?.trim();
+  return trimmedValue ? trimmedValue : undefined;
+}
 
 function getPromptOutputMode(): PromptOutputMode {
   const configuredMode = vscode.workspace
@@ -41,10 +51,51 @@ function getPromptDeliveryTarget(): PromptDeliveryTarget {
 function getContinueSessionId(): string | undefined {
   const configuredSessionId = vscode.workspace
     .getConfiguration("prompto")
-    .get<string>("continueSessionId", "")
-    .trim();
+    .get<string>("continueSessionId", "");
 
-  return configuredSessionId.length ? configuredSessionId : undefined;
+  return normalizeOptionalValue(configuredSessionId);
+}
+
+function getContinueSessionTitle(): string | undefined {
+  const configuredSessionTitle = vscode.workspace
+    .getConfiguration("prompto")
+    .get<string>("continueSessionTitle", "");
+
+  return normalizeOptionalValue(configuredSessionTitle);
+}
+
+function resolveContinueDeliveryOptions(
+  deliveryOptions: PromptDeliveryOptions = {}
+): PromptDeliveryOptions {
+  const overriddenSessionId = normalizeOptionalValue(
+    deliveryOptions.continueSessionId
+  );
+  if (overriddenSessionId) {
+    return {
+      continueSessionId: overriddenSessionId,
+    };
+  }
+
+  const overriddenSessionTitle = normalizeOptionalValue(
+    deliveryOptions.continueSessionTitle
+  );
+  if (overriddenSessionTitle) {
+    return {
+      continueSessionTitle: overriddenSessionTitle,
+    };
+  }
+
+  const configuredSessionId = getContinueSessionId();
+  if (configuredSessionId) {
+    return {
+      continueSessionId: configuredSessionId,
+    };
+  }
+
+  const configuredSessionTitle = getContinueSessionTitle();
+  return {
+    continueSessionTitle: configuredSessionTitle,
+  };
 }
 
 async function openCopilotChat(
@@ -66,11 +117,17 @@ async function openCopilotChat(
 
 async function openContinueChat(
   promptContent: string,
-  submitImmediately: boolean
+  submitImmediately: boolean,
+  deliveryOptions: PromptDeliveryOptions = {}
 ): Promise<boolean> {
   try {
+    const resolvedDeliveryOptions = resolveContinueDeliveryOptions(
+      deliveryOptions
+    );
+
     await vscode.commands.executeCommand("continue.promptoDeliverPrompt", {
-      sessionId: getContinueSessionId(),
+      sessionId: resolvedDeliveryOptions.continueSessionId,
+      sessionTitle: resolvedDeliveryOptions.continueSessionTitle,
       input: promptContent,
       submit: submitImmediately,
     });
@@ -103,7 +160,8 @@ async function copyPromptToClipboard(
 
 export async function deliverPromptContent(
   promptName: string,
-  promptContent: string
+  promptContent: string,
+  deliveryOptions: PromptDeliveryOptions = {}
 ): Promise<void> {
   const outputMode = getPromptOutputMode();
   const deliveryTarget = getPromptDeliveryTarget();
@@ -116,7 +174,11 @@ export async function deliverPromptContent(
   const submitImmediately = outputMode === "chatSubmit";
   const openedChat =
     deliveryTarget === "continue"
-      ? await openContinueChat(promptContent, submitImmediately)
+      ? await openContinueChat(
+          promptContent,
+          submitImmediately,
+          deliveryOptions
+        )
       : await openCopilotChat(promptContent, submitImmediately);
 
   if (!openedChat) {

@@ -3,7 +3,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { MarkdownPromptCodeLensProvider } from "./providers/MarkdownPromptCodeLensProvider";
 import { PromptTreeProvider } from "./providers/PromptTreeProvider";
-import { deliverPromptContent } from "./services/PromptDeliveryService";
+import {
+  deliverPromptContent,
+  PromptDeliveryOptions,
+} from "./services/PromptDeliveryService";
 import {
   getPromptDirectoryPath,
   getPromptDirectorySetting,
@@ -20,10 +23,67 @@ import {
 
 let treeProvider: PromptTreeProvider;
 
+const PROMPTO_FILE_METADATA_START_REGEX = /^\s*<!--\s*prompto\s*$/;
+const PROMPTO_FILE_METADATA_END_REGEX = /^\s*-->\s*$/;
+const PROMPTO_FILE_METADATA_KEY_VALUE_REGEX =
+  /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)\s*$/;
+
 interface PromptExecutionContext {
   sourceDocument?: vscode.TextDocument;
   selectedTextContext?: SelectedTextVariableContext;
+  deliveryOptions?: PromptDeliveryOptions;
   workspaceFolder?: vscode.WorkspaceFolder;
+}
+
+interface ParsedPromptFile {
+  content: string;
+  deliveryOptions: PromptDeliveryOptions;
+}
+
+function getPromptDocumentContent(
+  filePath: string,
+  sourceDocument?: vscode.TextDocument
+): string {
+  const matchingDocument =
+    sourceDocument?.uri.fsPath === filePath
+      ? sourceDocument
+      : vscode.workspace.textDocuments.find(
+          (document) => document.uri.fsPath === filePath
+        );
+
+  if (matchingDocument) {
+    return matchingDocument.getText().replace(/\r\n/g, "\n");
+  }
+
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+}
+
+function normalizePromptDeliveryValue(
+  value: string | undefined
+): string | undefined {
+  const trimmedValue = value?.trim();
+  return trimmedValue ? trimmedValue : undefined;
+}
+
+function mergePromptDeliveryOptions(
+  promptFileDeliveryOptions: PromptDeliveryOptions,
+  executionContextDeliveryOptions: PromptDeliveryOptions = {}
+): PromptDeliveryOptions {
+  const continueSessionId =
+    normalizePromptDeliveryValue(executionContextDeliveryOptions.continueSessionId) ??
+    normalizePromptDeliveryValue(promptFileDeliveryOptions.continueSessionId);
+
+  if (continueSessionId) {
+    return { continueSessionId };
+  }
+
+  return {
+    continueSessionTitle:
+      normalizePromptDeliveryValue(
+        executionContextDeliveryOptions.continueSessionTitle
+      ) ??
+      normalizePromptDeliveryValue(promptFileDeliveryOptions.continueSessionTitle),
+  };
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -340,35 +400,109 @@ async function navigatePromptDirectoryWithGlobalSearch(
   }
 }
 
-function getPromptContent(filePath: string): string {
-  try {
-    const content = fs.readFileSync(filePath, "utf8");
-    const lines = content.split("\n");
-    let promptContent = "";
-    let inComment = false;
+function parsePromptFileMetadata(lines: string[]):
+  | { startLine: number; endLine: number; values: Record<string, string> }
+  | undefined {
+  let metadataStartLine = 0;
 
-    for (const line of lines) {
-      if (line.startsWith("# ")) {
-        continue;
-      }
+  if (lines[metadataStartLine]?.startsWith("# ")) {
+    metadataStartLine += 1;
+  }
 
-      if (line.includes("<!--")) {
-        inComment = true;
-      }
-      if (line.includes("-->")) {
-        inComment = false;
-        continue;
-      }
+  while (
+    metadataStartLine < lines.length &&
+    !lines[metadataStartLine].trim()
+  ) {
+    metadataStartLine += 1;
+  }
 
-      if (!inComment && !line.startsWith("Write your prompt content here...")) {
-        promptContent += line + "\n";
-      }
+  if (
+    metadataStartLine >= lines.length ||
+    !PROMPTO_FILE_METADATA_START_REGEX.test(lines[metadataStartLine])
+  ) {
+    return undefined;
+  }
+
+  const values: Record<string, string> = {};
+
+  for (
+    let currentLineIndex = metadataStartLine + 1;
+    currentLineIndex < lines.length;
+    currentLineIndex++
+  ) {
+    const line = lines[currentLineIndex];
+
+    if (PROMPTO_FILE_METADATA_END_REGEX.test(line)) {
+      return {
+        startLine: metadataStartLine,
+        endLine: currentLineIndex,
+        values,
+      };
     }
 
-    return promptContent.trim();
-  } catch (error) {
-    return "";
+    if (!line.trim()) {
+      continue;
+    }
+
+    const keyValueMatch = line.match(PROMPTO_FILE_METADATA_KEY_VALUE_REGEX);
+    if (!keyValueMatch) {
+      throw new Error(
+        "Invalid Prompto prompt metadata. Use key: value pairs inside a <!-- prompto ... --> block."
+      );
+    }
+
+    const [, key, value] = keyValueMatch;
+    values[key] = value;
   }
+
+  throw new Error(
+    "Unterminated Prompto prompt metadata block. Add --> to close it."
+  );
+}
+
+function getPromptFile(
+  filePath: string,
+  sourceDocument?: vscode.TextDocument
+): ParsedPromptFile {
+  const content = getPromptDocumentContent(filePath, sourceDocument);
+  const lines = content.split("\n");
+  const metadata = parsePromptFileMetadata(lines);
+  let promptContent = "";
+  let inComment = false;
+
+  for (const [lineIndex, line] of lines.entries()) {
+    if (line.startsWith("# ")) {
+      continue;
+    }
+
+    if (
+      metadata &&
+      lineIndex >= metadata.startLine &&
+      lineIndex <= metadata.endLine
+    ) {
+      continue;
+    }
+
+    if (line.includes("<!--")) {
+      inComment = true;
+    }
+    if (line.includes("-->")) {
+      inComment = false;
+      continue;
+    }
+
+    if (!inComment && !line.startsWith("Write your prompt content here...")) {
+      promptContent += line + "\n";
+    }
+  }
+
+  return {
+    content: promptContent.trim(),
+    deliveryOptions: {
+      continueSessionId: metadata?.values.continueSessionId?.trim(),
+      continueSessionTitle: metadata?.values.continueSessionTitle?.trim(),
+    },
+  };
 }
 
 async function processPromptVariables(
@@ -473,7 +607,11 @@ async function usePrompt(
 ): Promise<void> {
   try {
     const promptName = path.basename(promptPath, ".md");
-    const content = getPromptContent(promptPath);
+    const promptFile = getPromptFile(
+      promptPath,
+      executionContext.sourceDocument
+    );
+    const content = promptFile.content;
 
     if (!content) {
       vscode.window.showErrorMessage("Prompt is empty");
@@ -487,7 +625,14 @@ async function usePrompt(
       processedContent = result;
     }
 
-    await deliverPromptContent(promptName, processedContent);
+    await deliverPromptContent(
+      promptName,
+      processedContent,
+      mergePromptDeliveryOptions(
+        promptFile.deliveryOptions,
+        executionContext.deliveryOptions
+      )
+    );
   } catch (error) {
     vscode.window.showErrorMessage(`Error using prompt: ${error}`);
   }
@@ -547,6 +692,11 @@ Write your prompt content here...
 
 <!-- Instructions (will be ignored when using the prompt):
 - Use multiple lines naturally
+- Optional prompt-level metadata can be added above the body like:
+- <!-- prompto
+- continueSessionTitle: My Continue Session
+- -->
+- continueSessionTitle overrides User Settings for this prompt only
 - Add {{selectedText}} for dynamic content
 - You can define selected-text variables with a header block like:
 - ---
@@ -598,6 +748,10 @@ async function runMarkdownPromptBlock(
 
     await showPromptPicker({
       sourceDocument,
+      deliveryOptions: {
+        continueSessionId: promptBlock.variables.continueSessionId,
+        continueSessionTitle: promptBlock.variables.continueSessionTitle,
+      },
       workspaceFolder,
       selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(
         promptBlock

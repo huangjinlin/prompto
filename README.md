@@ -55,7 +55,8 @@ Your prompts are organized in the configured prompt directory. By default this i
 - **`prompto.deliveryTarget`** - Chooses where prompts are delivered:
     - `githubCopilotChat` (default) - deliver to GitHub Copilot Chat
     - `continue` - deliver to Continue through the Prompto control command in your Continue fork
-- **`prompto.continueSessionId`** - Optional Continue session ID to focus before delivery. Leave empty to use the current Continue session.
+- **`prompto.continueSessionId`** - Optional Continue session ID to focus before delivery. Leave empty to use the current Continue session. This takes priority over `prompto.continueSessionTitle`.
+- **`prompto.continueSessionTitle`** - Optional Continue session title to resolve before delivery. Used only when `prompto.continueSessionId` is empty, and it must match exactly one Continue session title.
 - **`prompto.promptsDirectory`** - Workspace-relative folder where prompt markdown files are stored. Defaults to `.prompto`.
 
 ## 🔧 Prompt Format
@@ -64,6 +65,10 @@ Each prompt is a simple markdown file:
 
 ```markdown
 # My Prompt Name
+
+<!-- prompto
+continueSessionTitle: My Continue Session
+-->
 
 Your prompt content goes here...
 
@@ -77,6 +82,8 @@ Use {{customVariable}} for user input.
 - Save when finished
 -->
 ```
+
+When `prompto.deliveryTarget` is set to `continue`, prompt-file metadata can override workspace-level Continue targeting for that prompt. `continueSessionTitle` takes precedence over the User Settings values for `prompto.continueSessionId` and `prompto.continueSessionTitle` for that one prompt file.
 
 ## 💡 Variables
 
