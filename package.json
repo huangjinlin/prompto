@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
