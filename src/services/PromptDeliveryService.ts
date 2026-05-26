@@ -1,15 +1,32 @@
 import * as vscode from "vscode";
 
-type PromptOutputMode = "chatPrefill" | "chatSubmit" | "clipboard";
+export type PromptOutputMode = "chatPrefill" | "chatSubmit" | "clipboard";
 export type PromptDeliveryTarget =
   | "githubCopilotChat"
   | "continue"
   | "claudeCode";
 
 export interface PromptDeliveryOptions {
+  outputMode?: PromptOutputMode;
   deliveryTarget?: PromptDeliveryTarget;
   continueSessionId?: string;
   continueSessionTitle?: string;
+}
+
+export function parsePromptOutputMode(
+  value: string | undefined
+): PromptOutputMode | undefined {
+  const normalizedValue = normalizeOptionalValue(value);
+
+  if (
+    normalizedValue === "chatPrefill" ||
+    normalizedValue === "chatSubmit" ||
+    normalizedValue === "clipboard"
+  ) {
+    return normalizedValue;
+  }
+
+  return undefined;
 }
 
 export function parsePromptDeliveryTarget(
@@ -91,15 +108,7 @@ function getPromptOutputMode(): PromptOutputMode {
     .getConfiguration("prompto")
     .get<string>("outputMode", DEFAULT_PROMPT_OUTPUT_MODE);
 
-  if (
-    configuredMode === "chatPrefill" ||
-    configuredMode === "chatSubmit" ||
-    configuredMode === "clipboard"
-  ) {
-    return configuredMode;
-  }
-
-  return DEFAULT_PROMPT_OUTPUT_MODE;
+  return parsePromptOutputMode(configuredMode) ?? DEFAULT_PROMPT_OUTPUT_MODE;
 }
 
 function getPromptDeliveryTarget(): PromptDeliveryTarget {
@@ -117,6 +126,12 @@ function resolvePromptDeliveryTarget(
   deliveryOptions: PromptDeliveryOptions = {}
 ): PromptDeliveryTarget {
   return deliveryOptions.deliveryTarget ?? getPromptDeliveryTarget();
+}
+
+function resolvePromptOutputMode(
+  deliveryOptions: PromptDeliveryOptions = {}
+): PromptOutputMode {
+  return deliveryOptions.outputMode ?? getPromptOutputMode();
 }
 
 function getContinueSessionId(): string | undefined {
@@ -241,7 +256,7 @@ export async function deliverPromptContent(
   promptContent: string,
   deliveryOptions: PromptDeliveryOptions = {}
 ): Promise<void> {
-  const outputMode = getPromptOutputMode();
+  const outputMode = resolvePromptOutputMode(deliveryOptions);
   const deliveryTarget = resolvePromptDeliveryTarget(deliveryOptions);
 
   if (outputMode === "clipboard") {

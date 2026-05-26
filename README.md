@@ -69,6 +69,7 @@ Each prompt is a simple markdown file:
 # My Prompt Name
 
 <!-- prompto
+outputMode: chatSubmit
 deliveryTarget: continue
 continueSessionTitle: My Continue Session
 -->
@@ -86,7 +87,7 @@ Use {{customVariable}} for user input.
 -->
 ```
 
-When prompt metadata includes `deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt. When the resolved target is `continue`, prompt metadata can also override workspace-level Continue targeting for that prompt. `continueSessionId` takes precedence over `continueSessionTitle`.
+When prompt metadata includes `outputMode`, it overrides the workspace-level `prompto.outputMode` for that prompt. When prompt metadata includes `deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt. When the resolved target is `continue`, prompt metadata can also override workspace-level Continue targeting for that prompt. `continueSessionId` takes precedence over `continueSessionTitle`.
 
 Markdown prompt blocks can either reference a saved prompt file with `prompt`, or define prompt text inline with `promptContent`:
 
@@ -94,6 +95,7 @@ Markdown prompt blocks can either reference a saved prompt file with `prompt`, o
 ## Review This Snippet
 
 <!-- prompto
+outputMode: clipboard
 deliveryTarget: claudeCode
 promptContent: |
     Review the selected content and report:
@@ -115,6 +117,7 @@ Markdown files can also define explicit inline actions in the body with `prompto
 ```markdown
 <!-- prompto-action
 title: Summarize This Section
+outputMode: chatSubmit
 promptContent: |
     Summarize the current context and report:
     1. Key points
@@ -126,7 +129,7 @@ deliveryTarget: claudeCode
 This paragraph is only the action anchor for CodeLens display.
 ```
 
-`prompto-action` is separate from heading-based prompt blocks. It does not provide `{{selectedText}}`, does not inherit outer block routing, and requires its own explicit metadata.
+`prompto-action` is separate from heading-based prompt blocks. It does not provide `{{selectedText}}`, does not inherit outer block routing, and requires its own explicit metadata. Its metadata can override both `outputMode` and `deliveryTarget` for that action only.
 
 ## 💡 Variables
 

@@ -2,13 +2,16 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { MarkdownPromptCodeLensProvider } from "./providers/MarkdownPromptCodeLensProvider";
+import { MarkdownPromptMetadataCompletionProvider } from "./providers/MarkdownPromptMetadataCompletionProvider";
 import { PromptTreeProvider } from "./providers/PromptTreeProvider";
 import {
   deliverPromptContent,
   parsePromptDeliveryTarget,
+  parsePromptOutputMode,
   prefillActiveTerminal,
   PromptDeliveryOptions,
   PromptDeliveryTarget,
+  PromptOutputMode,
 } from "./services/PromptDeliveryService";
 import {
   getPromptDirectoryPath,
@@ -72,7 +75,7 @@ function getPromptDocumentContent(
   return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
 }
 
-function normalizePromptDeliveryValue(
+function normalizePromptMetadataValue(
   value: string | undefined
 ): string | undefined {
   const trimmedValue = value?.trim();
@@ -82,7 +85,7 @@ function normalizePromptDeliveryValue(
 function parsePromptMetadataDeliveryTarget(
   value: string | undefined
 ): PromptDeliveryTarget | undefined {
-  const normalizedValue = normalizePromptDeliveryValue(value);
+  const normalizedValue = normalizePromptMetadataValue(value);
   const deliveryTarget = parsePromptDeliveryTarget(normalizedValue);
 
   if (!deliveryTarget && normalizedValue) {
@@ -94,32 +97,53 @@ function parsePromptMetadataDeliveryTarget(
   return deliveryTarget;
 }
 
+function parsePromptMetadataOutputMode(
+  value: string | undefined
+): PromptOutputMode | undefined {
+  const normalizedValue = normalizePromptMetadataValue(value);
+  const outputMode = parsePromptOutputMode(normalizedValue);
+
+  if (!outputMode && normalizedValue) {
+    throw new Error(
+      `Invalid Prompto outputMode: ${normalizedValue}. Use chatPrefill, chatSubmit, or clipboard.`
+    );
+  }
+
+  return outputMode;
+}
+
 function mergePromptDeliveryOptions(
   promptFileDeliveryOptions: PromptDeliveryOptions,
   executionContextDeliveryOptions: PromptDeliveryOptions = {}
 ): PromptDeliveryOptions {
+  const outputMode =
+    executionContextDeliveryOptions.outputMode ??
+    promptFileDeliveryOptions.outputMode;
+
   const deliveryTarget =
     executionContextDeliveryOptions.deliveryTarget ??
     promptFileDeliveryOptions.deliveryTarget;
 
   const continueSessionId =
-    normalizePromptDeliveryValue(executionContextDeliveryOptions.continueSessionId) ??
-    normalizePromptDeliveryValue(promptFileDeliveryOptions.continueSessionId);
+    normalizePromptMetadataValue(executionContextDeliveryOptions.continueSessionId) ??
+    normalizePromptMetadataValue(promptFileDeliveryOptions.continueSessionId);
 
   if (continueSessionId) {
     return {
+      outputMode,
       deliveryTarget,
       continueSessionId,
     };
   }
 
   return {
+    outputMode,
     deliveryTarget,
     continueSessionTitle:
-      normalizePromptDeliveryValue(
+      normalizePromptMetadataValue(
         executionContextDeliveryOptions.continueSessionTitle
       ) ??
-      normalizePromptDeliveryValue(promptFileDeliveryOptions.continueSessionTitle),
+      normalizePromptMetadataValue(promptFileDeliveryOptions.continueSessionTitle),
   };
 }
 
@@ -132,6 +156,20 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerCodeLensProvider(
       { language: "markdown" },
       new MarkdownPromptCodeLensProvider()
+    )
+  );
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      { language: "markdown" },
+      new MarkdownPromptMetadataCompletionProvider(),
+      " ",
+      ":",
+      "p",
+      "d",
+      "o",
+      "c",
+      "t",
+      "-"
     )
   );
   context.subscriptions.push(
@@ -579,6 +617,7 @@ function getPromptFile(
   return {
     content: promptContent.trim(),
     deliveryOptions: {
+      outputMode: parsePromptMetadataOutputMode(metadata?.values.outputMode),
       deliveryTarget: parsePromptMetadataDeliveryTarget(
         metadata?.values.deliveryTarget
       ),
@@ -793,9 +832,11 @@ Write your prompt content here...
 - Use multiple lines naturally
 - Optional prompt-level metadata can be added above the body like:
 - <!-- prompto
+  - outputMode: chatSubmit
   - deliveryTarget: continue
 - continueSessionTitle: My Continue Session
 - -->
+  - outputMode overrides User Settings for this prompt only
   - deliveryTarget overrides User Settings for this prompt only
 - Add {{selectedText}} for dynamic content
 - You can define selected-text variables with a header block like:
@@ -850,6 +891,9 @@ async function runMarkdownPromptBlock(
       promptName: promptBlock.headingText,
       sourceDocument,
       deliveryOptions: {
+        outputMode: parsePromptMetadataOutputMode(
+          promptBlock.variables.outputMode
+        ),
         deliveryTarget: parsePromptMetadataDeliveryTarget(
           promptBlock.variables.deliveryTarget
         ),
@@ -889,6 +933,9 @@ async function runMarkdownPromptAction(
       promptName: promptAction.title,
       sourceDocument,
       deliveryOptions: {
+        outputMode: parsePromptMetadataOutputMode(
+          promptAction.variables.outputMode
+        ),
         deliveryTarget: parsePromptMetadataDeliveryTarget(
           promptAction.variables.deliveryTarget
         ),

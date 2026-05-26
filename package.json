@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.10",
+  "version": "1.0.12",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -107,7 +107,7 @@
             "Send the selected prompt immediately to the configured chat target.",
             "Copy the selected prompt to the clipboard."
           ],
-          "markdownDescription": "Controls what happens after selecting a prompt with **Prompto: Use Prompt**."
+          "markdownDescription": "Controls what happens after selecting a prompt with **Prompto: Use Prompt**. Prompt metadata can override this with `outputMode`."
         },
         "prompto.deliveryTarget": {
           "type": "string",

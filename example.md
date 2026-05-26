@@ -12,6 +12,7 @@
 # 我的 Prompt
 
 <!-- prompto
+outputMode: chatSubmit
 deliveryTarget: continue
 continueSessionTitle: 我的 Continue 会话
 -->
@@ -29,6 +30,7 @@ continueSessionTitle: 我的 Continue 会话
 
 当前支持的 prompt 文件元信息键：
 
+- `outputMode`: `chatPrefill` | `chatSubmit` | `clipboard`
 - `deliveryTarget`: `githubCopilotChat` | `continue` | `claudeCode`
 - `continueSessionId`
 - `continueSessionTitle`
@@ -42,6 +44,7 @@ continueSessionTitle: 我的 Continue 会话
 
 <!-- prompto
 prompt: code-review
+outputMode: chatSubmit
 deliveryTarget: continue
 continueSessionTitle: 代码会话
 -->
@@ -65,6 +68,7 @@ continueSessionTitle: 代码会话
 ## Review This Snippet
 
 <!-- prompto
+outputMode: clipboard
 deliveryTarget: claudeCode
 promptContent: |
     Review the selected content and report:
@@ -110,6 +114,7 @@ promptContent: 请总结下面内容，并给出三个行动项：{{selectedText
 prompt: code-review
 promptContent: |
     请总结 {{selectedText}}
+outputMode: chatSubmit
 deliveryTarget: continue
 continueSessionId: 12345678-1234-1234-1234-123456789abc
 continueSessionTitle: 我的会话
@@ -121,6 +126,7 @@ customVariable: 架构评审
 
 - `prompt`：引用 `.prompto` 中的 prompt 文件。
 - `promptContent`：直接提供 prompt 正文。
+- `outputMode`：覆盖工作区 `prompto.outputMode`。
 - `deliveryTarget`：覆盖工作区 `prompto.deliveryTarget`。
 - `continueSessionId`：指定 Continue 会话 ID。
 - `continueSessionTitle`：指定 Continue 会话标题。
@@ -200,6 +206,13 @@ componentName: UserCard
 3. markdown 正文 action 元信息中的 `deliveryTarget`
 4. 工作区设置 `prompto.deliveryTarget`
 
+### outputMode 来源
+
+1. markdown prompt 文件元信息中的 `outputMode`
+2. markdown 标题块元信息中的 `outputMode`
+3. markdown 正文 action 元信息中的 `outputMode`
+4. 工作区设置 `prompto.outputMode`
+
 说明：
 
 - 标题块执行时，block 自身的 `deliveryTarget` 会覆盖工作区设置。
@@ -214,6 +227,7 @@ componentName: UserCard
 ```markdown
 <!-- prompto-action
 title: 总结当前上下文
+outputMode: clipboard
 promptContent: |
     请总结当前上下文，输出：
     1. 核心结论
@@ -230,6 +244,7 @@ deliveryTarget: claudeCode
 - `prompto-action` 是独立语法，不属于标题 block。
 - `title` 必填，CodeLens 直接显示这个标题。
 - `prompt` 和 `promptContent` 二选一。
+- `outputMode` 可以覆盖工作区 `prompto.outputMode`。
 - action 默认没有 `selectedText`；如果 prompt 中写了 `{{selectedText}}`，会按空字符串处理，不会弹提示框。
 - action 不继承父标题 block 的 `deliveryTarget`、`continueSessionId`、`continueSessionTitle`。
 - action 的 CodeLens 优先显示在元信息后的第一条非空正文行；如果后面没有正文，则回退到元信息起始行。
@@ -240,6 +255,7 @@ deliveryTarget: claudeCode
 <!-- prompto-action
 title: 使用保存的 Prompt
 prompt: code-review
+outputMode: chatSubmit
 deliveryTarget: continue
 continueSessionTitle: 代码会话
 -->
