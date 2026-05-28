@@ -3,14 +3,11 @@ import * as vscode from "vscode";
 export type PromptOutputMode = "chatPrefill" | "chatSubmit" | "clipboard";
 export type PromptDeliveryTarget =
   | "githubCopilotChat"
-  | "continue"
   | "claudeCode";
 
 export interface PromptDeliveryOptions {
   outputMode?: PromptOutputMode;
   deliveryTarget?: PromptDeliveryTarget;
-  continueSessionId?: string;
-  continueSessionTitle?: string;
 }
 
 export function parsePromptOutputMode(
@@ -36,7 +33,6 @@ export function parsePromptDeliveryTarget(
 
   if (
     normalizedValue === "githubCopilotChat" ||
-    normalizedValue === "continue" ||
     normalizedValue === "claudeCode"
   ) {
     return normalizedValue;
@@ -134,56 +130,6 @@ function resolvePromptOutputMode(
   return deliveryOptions.outputMode ?? getPromptOutputMode();
 }
 
-function getContinueSessionId(): string | undefined {
-  const configuredSessionId = vscode.workspace
-    .getConfiguration("prompto")
-    .get<string>("continueSessionId", "");
-
-  return normalizeOptionalValue(configuredSessionId);
-}
-
-function getContinueSessionTitle(): string | undefined {
-  const configuredSessionTitle = vscode.workspace
-    .getConfiguration("prompto")
-    .get<string>("continueSessionTitle", "");
-
-  return normalizeOptionalValue(configuredSessionTitle);
-}
-
-function resolveContinueDeliveryOptions(
-  deliveryOptions: PromptDeliveryOptions = {}
-): PromptDeliveryOptions {
-  const overriddenSessionId = normalizeOptionalValue(
-    deliveryOptions.continueSessionId
-  );
-  if (overriddenSessionId) {
-    return {
-      continueSessionId: overriddenSessionId,
-    };
-  }
-
-  const overriddenSessionTitle = normalizeOptionalValue(
-    deliveryOptions.continueSessionTitle
-  );
-  if (overriddenSessionTitle) {
-    return {
-      continueSessionTitle: overriddenSessionTitle,
-    };
-  }
-
-  const configuredSessionId = getContinueSessionId();
-  if (configuredSessionId) {
-    return {
-      continueSessionId: configuredSessionId,
-    };
-  }
-
-  const configuredSessionTitle = getContinueSessionTitle();
-  return {
-    continueSessionTitle: configuredSessionTitle,
-  };
-}
-
 async function openCopilotChat(
   promptContent: string,
   submitImmediately: boolean
@@ -197,30 +143,6 @@ async function openCopilotChat(
     return true;
   } catch (error) {
     console.warn("Failed to open Copilot Chat", error);
-    return false;
-  }
-}
-
-async function openContinueChat(
-  promptContent: string,
-  submitImmediately: boolean,
-  deliveryOptions: PromptDeliveryOptions = {}
-): Promise<boolean> {
-  try {
-    const resolvedDeliveryOptions = resolveContinueDeliveryOptions(
-      deliveryOptions
-    );
-
-    await vscode.commands.executeCommand("continue.promptoDeliverPrompt", {
-      sessionId: resolvedDeliveryOptions.continueSessionId,
-      sessionTitle: resolvedDeliveryOptions.continueSessionTitle,
-      input: promptContent,
-      submit: submitImmediately,
-    });
-
-    return true;
-  } catch (error) {
-    console.warn("Failed to deliver prompt to Continue", error);
     return false;
   }
 }
@@ -266,21 +188,13 @@ export async function deliverPromptContent(
 
   const submitImmediately = outputMode === "chatSubmit";
   const openedChat =
-    deliveryTarget === "continue"
-      ? await openContinueChat(
-          promptContent,
-          submitImmediately,
-          deliveryOptions
-        )
-      : deliveryTarget === "claudeCode"
+    deliveryTarget === "claudeCode"
       ? await openClaudeCode(promptContent, submitImmediately)
       : await openCopilotChat(promptContent, submitImmediately);
 
   if (!openedChat) {
     const fallbackTarget =
-      deliveryTarget === "continue"
-        ? "Continue"
-        : deliveryTarget === "claudeCode"
+      deliveryTarget === "claudeCode"
         ? "Claude Code"
         : "Copilot Chat";
     await copyPromptToClipboard(promptName, promptContent, fallbackTarget);
@@ -289,9 +203,7 @@ export async function deliverPromptContent(
 
   const action = submitImmediately ? "sent to" : "filled in";
   const targetLabel =
-    deliveryTarget === "continue"
-      ? "Continue"
-      : deliveryTarget === "claudeCode"
+    deliveryTarget === "claudeCode"
       ? "Claude Code"
       : "Copilot Chat";
   vscode.window.showInformationMessage(

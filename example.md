@@ -13,8 +13,7 @@
 
 <!-- prompto
 outputMode: chatSubmit
-deliveryTarget: continue
-continueSessionTitle: 我的 Continue 会话
+deliveryTarget: githubCopilotChat
 -->
 
 请基于下面内容进行代码评审：
@@ -31,9 +30,7 @@ continueSessionTitle: 我的 Continue 会话
 当前支持的 prompt 文件元信息键：
 
 - `outputMode`: `chatPrefill` | `chatSubmit` | `clipboard`
-- `deliveryTarget`: `githubCopilotChat` | `continue` | `claudeCode`
-- `continueSessionId`
-- `continueSessionTitle`
+- `deliveryTarget`: `githubCopilotChat` | `claudeCode`
 
 ## 2. Markdown 标题块语法：引用已保存的 prompt 文件
 
@@ -45,8 +42,7 @@ continueSessionTitle: 我的 Continue 会话
 <!-- prompto
 prompt: code-review
 outputMode: chatSubmit
-deliveryTarget: continue
-continueSessionTitle: 代码会话
+deliveryTarget: githubCopilotChat
 -->
 
 这里的正文会作为 `{{selectedText}}` 提供给 prompt。
@@ -115,9 +111,7 @@ prompt: code-review
 promptContent: |
     请总结 {{selectedText}}
 outputMode: chatSubmit
-deliveryTarget: continue
-continueSessionId: 12345678-1234-1234-1234-123456789abc
-continueSessionTitle: 我的会话
+deliveryTarget: githubCopilotChat
 customVariable: 架构评审
 -->
 ```
@@ -128,8 +122,6 @@ customVariable: 架构评审
 - `promptContent`：直接提供 prompt 正文。
 - `outputMode`：覆盖工作区 `prompto.outputMode`。
 - `deliveryTarget`：覆盖工作区 `prompto.deliveryTarget`。
-- `continueSessionId`：指定 Continue 会话 ID。
-- `continueSessionTitle`：指定 Continue 会话标题。
 - 其他键值对：可作为自定义变量，供 prompt 中的 `{{变量名}}` 使用。
 
 注意：当前实现里，`prompt` 和 `promptContent` 是互斥的；如果都提供，会报错。
@@ -218,7 +210,6 @@ componentName: UserCard
 - 标题块执行时，block 自身的 `deliveryTarget` 会覆盖工作区设置。
 - 正文 action 执行时，action 自身的 `deliveryTarget` 会覆盖工作区设置。
 - prompt 文件执行时，prompt 文件元信息中的 `deliveryTarget` 会覆盖工作区设置。
-- Continue 会话配置遵循同样思路：显式元信息优先于工作区设置。
 
 ## 9. 正文 Action 语法
 
@@ -246,7 +237,7 @@ deliveryTarget: claudeCode
 - `prompt` 和 `promptContent` 二选一。
 - `outputMode` 可以覆盖工作区 `prompto.outputMode`。
 - action 默认没有 `selectedText`；如果 prompt 中写了 `{{selectedText}}`，会按空字符串处理，不会弹提示框。
-- action 不继承父标题 block 的 `deliveryTarget`、`continueSessionId`、`continueSessionTitle`。
+- action 不继承父标题 block 的 `deliveryTarget`。
 - action 的 CodeLens 优先显示在元信息后的第一条非空正文行；如果后面没有正文，则回退到元信息起始行。
 
 使用 `prompt` 的示例：
@@ -256,8 +247,7 @@ deliveryTarget: claudeCode
 title: 使用保存的 Prompt
 prompt: code-review
 outputMode: chatSubmit
-deliveryTarget: continue
-continueSessionTitle: 代码会话
+deliveryTarget: githubCopilotChat
 -->
 
 点击这里运行保存的 prompt。

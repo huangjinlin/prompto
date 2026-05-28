@@ -52,11 +52,6 @@ const DELIVERY_TARGET_VALUES = [
     documentation: "Deliver the prompt to GitHub Copilot Chat.",
   },
   {
-    label: "continue",
-    detail: "Continue",
-    documentation: "Deliver the prompt through the Continue integration command.",
-  },
-  {
     label: "claudeCode",
     detail: "Claude Code",
     documentation: "Deliver the prompt to the active terminal, intended for Claude Code.",
@@ -77,20 +72,6 @@ const PROMPT_FILE_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
     documentation:
       "Overrides the workspace-level prompto.deliveryTarget for this prompt file.",
     insertText: "deliveryTarget: ",
-  },
-  {
-    label: "continueSessionId",
-    detail: "Target Continue session ID",
-    documentation:
-      "Delivers the prompt to a specific Continue session by ID when the target is Continue.",
-    insertText: "continueSessionId: ",
-  },
-  {
-    label: "continueSessionTitle",
-    detail: "Target Continue session title",
-    documentation:
-      "Delivers the prompt to a specific Continue session by exact title when the target is Continue.",
-    insertText: "continueSessionTitle: ",
   },
 ];
 
@@ -122,20 +103,6 @@ const PROMPT_BLOCK_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
     documentation:
       "Overrides the workspace-level prompto.deliveryTarget for this markdown block.",
     insertText: "deliveryTarget: ",
-  },
-  {
-    label: "continueSessionId",
-    detail: "Target Continue session ID",
-    documentation:
-      "Delivers the block prompt to a specific Continue session by ID.",
-    insertText: "continueSessionId: ",
-  },
-  {
-    label: "continueSessionTitle",
-    detail: "Target Continue session title",
-    documentation:
-      "Delivers the block prompt to a specific Continue session by exact title.",
-    insertText: "continueSessionTitle: ",
   },
   {
     label: "customVariable",
@@ -182,20 +149,6 @@ const PROMPT_ACTION_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
     documentation:
       "Overrides the workspace-level prompto.deliveryTarget for this prompto-action.",
     insertText: "deliveryTarget: ",
-  },
-  {
-    label: "continueSessionId",
-    detail: "Target Continue session ID",
-    documentation:
-      "Delivers this action to a specific Continue session by ID.",
-    insertText: "continueSessionId: ",
-  },
-  {
-    label: "continueSessionTitle",
-    detail: "Target Continue session title",
-    documentation:
-      "Delivers this action to a specific Continue session by exact title.",
-    insertText: "continueSessionTitle: ",
   },
   {
     label: "customVariable",

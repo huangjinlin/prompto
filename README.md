@@ -55,10 +55,7 @@ Your prompts are organized in the configured prompt directory. By default this i
     - `clipboard` - copy the prompt to the clipboard
 - **`prompto.deliveryTarget`** - Chooses where prompts are delivered:
     - `githubCopilotChat` (default) - deliver to GitHub Copilot Chat
-    - `continue` - deliver to Continue through the Prompto control command in your Continue fork
     - `claudeCode` - paste the prompt into the active terminal, intended for Claude Code
-- **`prompto.continueSessionId`** - Optional Continue session ID to focus before delivery. Leave empty to use the current Continue session. This takes priority over `prompto.continueSessionTitle`.
-- **`prompto.continueSessionTitle`** - Optional Continue session title to resolve before delivery. Used only when `prompto.continueSessionId` is empty, and it must match exactly one Continue session title.
 - **`prompto.promptsDirectory`** - Workspace-relative folder where prompt markdown files are stored. Defaults to `.prompto`.
 
 ## 🔧 Prompt Format
@@ -70,8 +67,7 @@ Each prompt is a simple markdown file:
 
 <!-- prompto
 outputMode: chatSubmit
-deliveryTarget: continue
-continueSessionTitle: My Continue Session
+deliveryTarget: githubCopilotChat
 -->
 
 Your prompt content goes here...
@@ -87,7 +83,7 @@ Use {{customVariable}} for user input.
 -->
 ```
 
-When prompt metadata includes `outputMode`, it overrides the workspace-level `prompto.outputMode` for that prompt. When prompt metadata includes `deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt. When the resolved target is `continue`, prompt metadata can also override workspace-level Continue targeting for that prompt. `continueSessionId` takes precedence over `continueSessionTitle`.
+When prompt metadata includes `outputMode`, it overrides the workspace-level `prompto.outputMode` for that prompt. When prompt metadata includes `deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt.
 
 Markdown prompt blocks can either reference a saved prompt file with `prompt`, or define prompt text inline with `promptContent`:
 

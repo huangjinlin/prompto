@@ -12,7 +12,7 @@
 
 - 不自动从正文推断动作入口。
 - 不自动从附近段落提取 `selectedText`。
-- 不隐式继承父标题 block 的 `deliveryTarget`、Continue 会话或 prompt 来源。
+- 不隐式继承父标题 block 的 `deliveryTarget` 或 prompt 来源。
 - 不改变现有 `prompto` block 的标题 CodeLens 行为。
 
 ## 建议语法
@@ -39,7 +39,7 @@ deliveryTarget: claudeCode
 6. `prompt` 表示引用已保存的 prompt 文件；`promptContent` 表示内联 prompt 正文模板。
 7. action 默认没有 `selectedText`，其语义等价于 `selectedTextMode = none`。
 8. action 场景下如果 prompt 中包含 `{{selectedText}}`，默认静默替换为空字符串，不弹出 “No text selected” 交互。
-9. action 的 `deliveryTarget`、`continueSessionId`、`continueSessionTitle` 只读取 action 自身元信息，不继承外层 block。
+9. action 的 `deliveryTarget` 只读取 action 自身元信息，不继承外层 block。
 10. action 应复用现有变量替换和投递链路，但不能复用“标题 block = selectedText”这层上下文构造。
 11. CodeLens 只渲染在 action 锚点对应位置，不在 action 元信息块内部重复渲染。
 12. 如果 action 后面有正文，CodeLens 优先显示在 action 后第一条非空正文行；如果没有正文，再回退到 action 元信息起始行。
@@ -83,8 +83,7 @@ prompt: review
 ## 父标题
 
 <!-- prompto
-deliveryTarget: continue
-continueSessionTitle: A
+deliveryTarget: githubCopilotChat
 -->
 
 <!-- prompto-action

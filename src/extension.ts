@@ -90,7 +90,7 @@ function parsePromptMetadataDeliveryTarget(
 
   if (!deliveryTarget && normalizedValue) {
     throw new Error(
-      `Invalid Prompto deliveryTarget: ${normalizedValue}. Use githubCopilotChat, continue, or claudeCode.`
+      `Invalid Prompto deliveryTarget: ${normalizedValue}. Use githubCopilotChat or claudeCode.`
     );
   }
 
@@ -124,26 +124,9 @@ function mergePromptDeliveryOptions(
     executionContextDeliveryOptions.deliveryTarget ??
     promptFileDeliveryOptions.deliveryTarget;
 
-  const continueSessionId =
-    normalizePromptMetadataValue(executionContextDeliveryOptions.continueSessionId) ??
-    normalizePromptMetadataValue(promptFileDeliveryOptions.continueSessionId);
-
-  if (continueSessionId) {
-    return {
-      outputMode,
-      deliveryTarget,
-      continueSessionId,
-    };
-  }
-
   return {
     outputMode,
     deliveryTarget,
-    continueSessionTitle:
-      normalizePromptMetadataValue(
-        executionContextDeliveryOptions.continueSessionTitle
-      ) ??
-      normalizePromptMetadataValue(promptFileDeliveryOptions.continueSessionTitle),
   };
 }
 
@@ -621,8 +604,6 @@ function getPromptFile(
       deliveryTarget: parsePromptMetadataDeliveryTarget(
         metadata?.values.deliveryTarget
       ),
-      continueSessionId: metadata?.values.continueSessionId?.trim(),
-      continueSessionTitle: metadata?.values.continueSessionTitle?.trim(),
     },
   };
 }
@@ -833,8 +814,7 @@ Write your prompt content here...
 - Optional prompt-level metadata can be added above the body like:
 - <!-- prompto
   - outputMode: chatSubmit
-  - deliveryTarget: continue
-- continueSessionTitle: My Continue Session
+  - deliveryTarget: githubCopilotChat
 - -->
   - outputMode overrides User Settings for this prompt only
   - deliveryTarget overrides User Settings for this prompt only
@@ -897,8 +877,6 @@ async function runMarkdownPromptBlock(
         deliveryTarget: parsePromptMetadataDeliveryTarget(
           promptBlock.variables.deliveryTarget
         ),
-        continueSessionId: promptBlock.variables.continueSessionId,
-        continueSessionTitle: promptBlock.variables.continueSessionTitle,
       },
       workspaceFolder,
       selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(
@@ -939,8 +917,6 @@ async function runMarkdownPromptAction(
         deliveryTarget: parsePromptMetadataDeliveryTarget(
           promptAction.variables.deliveryTarget
         ),
-        continueSessionId: promptAction.variables.continueSessionId,
-        continueSessionTitle: promptAction.variables.continueSessionTitle,
       },
       suppressNoSelectedTextPrompt: true,
       workspaceFolder,

@@ -114,25 +114,13 @@
           "default": "githubCopilotChat",
           "enum": [
             "githubCopilotChat",
-            "continue",
             "claudeCode"
           ],
           "enumDescriptions": [
             "Deliver prompts to GitHub Copilot Chat.",
-            "Deliver prompts to Continue through its Prompto control command.",
             "Deliver prompts to the active terminal, intended for Claude Code."
           ],
           "markdownDescription": "Selects which chat surface receives prompts when **Prompto: Use Prompt** runs. Prompt metadata can override this with `deliveryTarget`."
-        },
-        "prompto.continueSessionId": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Optional Continue session ID to focus before Prompto delivers a prompt. Leave empty to use the current Continue session."
-        },
-        "prompto.continueSessionTitle": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Optional Continue session title to resolve before Prompto delivers a prompt. Used only when `prompto.continueSessionId` is empty, and must match exactly one Continue session title."
         },
         "prompto.promptsDirectory": {
           "type": "string",
