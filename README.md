@@ -65,9 +65,11 @@ Each prompt is a simple markdown file:
 ```markdown
 # My Prompt Name
 
-<!-- prompto
-outputMode: chatSubmit
-deliveryTarget: githubCopilotChat
+<!-- md-meta
+version: 1
+prompto:
+    outputMode: chatSubmit
+    deliveryTarget: githubCopilotChat
 -->
 
 Your prompt content goes here...
@@ -83,49 +85,54 @@ Use {{customVariable}} for user input.
 -->
 ```
 
-When prompt metadata includes `outputMode`, it overrides the workspace-level `prompto.outputMode` for that prompt. When prompt metadata includes `deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt.
+When prompt metadata includes `prompto.outputMode`, it overrides the workspace-level `prompto.outputMode` for that prompt. When prompt metadata includes `prompto.deliveryTarget`, it overrides the workspace-level `prompto.deliveryTarget` for that prompt.
 
-Markdown prompt blocks can either reference a saved prompt file with `prompt`, or define prompt text inline with `promptContent`:
+Markdown prompt blocks can either reference a saved prompt file with `prompto.prompt`, or define prompt text inline with `prompto.promptContent`:
 
 ```markdown
 ## Review This Snippet
 
-<!-- prompto
-outputMode: clipboard
-deliveryTarget: claudeCode
-promptContent: |
-    Review the selected content and report:
-    1. Risks
-    2. Suggested fixes
-    3. Merge recommendation
+<!-- md-meta
+version: 1
+prompto:
+    outputMode: clipboard
+    deliveryTarget: claudeCode
+    promptContent: |
+        Review the selected content and report:
+        1. Risks
+        2. Suggested fixes
+        3. Merge recommendation
 
-    Content:
-    {{selectedText}}
+        Content:
+        {{selectedText}}
 -->
 
 Paste or write the content to review here.
 ```
 
-Use either `prompt` or `promptContent` in a markdown block, but not both. The block body still becomes `{{selectedText}}`.
+Use either `prompto.prompt` or `prompto.promptContent` in a markdown block, but not both. The block body still becomes `{{selectedText}}`.
 
-Markdown files can also define explicit inline actions in the body with `prompto-action`:
+Markdown files can also define explicit inline actions in the body with `scope: action`:
 
 ```markdown
-<!-- prompto-action
-title: Summarize This Section
-outputMode: chatSubmit
-promptContent: |
-    Summarize the current context and report:
-    1. Key points
-    2. Risks
-    3. Next steps
-deliveryTarget: claudeCode
+<!-- md-meta
+version: 1
+scope: action
+prompto:
+    title: Summarize This Section
+    outputMode: chatSubmit
+    promptContent: |
+        Summarize the current context and report:
+        1. Key points
+        2. Risks
+        3. Next steps
+    deliveryTarget: claudeCode
 -->
 
 This paragraph is only the action anchor for CodeLens display.
 ```
 
-`prompto-action` is separate from heading-based prompt blocks. It does not provide `{{selectedText}}`, does not inherit outer block routing, and requires its own explicit metadata. Its metadata can override both `outputMode` and `deliveryTarget` for that action only.
+Action blocks are separate from heading-based prompt blocks. They do not provide `{{selectedText}}`, do not inherit outer block routing, and require their own explicit metadata. Their metadata can override both `outputMode` and `deliveryTarget` for that action only.
 
 ## 💡 Variables
 
@@ -169,13 +176,14 @@ In this mode:
 
 ## 🧩 Executable Markdown Blocks
 
-You can turn a markdown section into a clickable Prompto block by combining a heading with a `prompto` metadata comment.
+You can turn a markdown section into a clickable Prompto block by combining a heading with an `md-meta` metadata comment.
 
 ```markdown
 ## Review This Function
-<!-- prompto
-prompt: review/code-review
-codeAspect: performance
+<!-- md-meta
+version: 1
+prompto:
+    prompt: review/code-review
 -->
 
 function under review goes here
@@ -189,6 +197,8 @@ In this mode:
 - metadata values are available to matching `{{customVariable}}` placeholders
 - the block ends at the next heading of the same or higher level
 - lower-level headings remain part of the block body
+
+Only `md-meta` metadata syntax is supported.
 
 **Example:**
 

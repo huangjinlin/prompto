@@ -23,12 +23,6 @@ import {
   SelectedTextVariableContext,
 } from "./services/SelectedTextVariableService";
 import {
-  getMarkdownPromptActionAtLine,
-  getMarkdownPromptBlockAtHeadingLine,
-  getSelectedTextContextForMarkdownPromptAction,
-  getSelectedTextContextForMarkdownPromptBlock,
-} from "./services/MarkdownPromptBlockService";
-import {
   findPromptoMetaForHeading,
   findPromptoMetaForAction,
   getDocumentLines,
@@ -36,14 +30,13 @@ import {
   getNodeBody,
   buildSelectedTextContextFromPrompto,
 } from "./services/MarkdownMetaBridgeService";
+import { parseMarkdownMetaDocument } from "./services/MarkdownMetaParserService";
 import { PromptFlowWebviewProvider } from "./webview/PromptFlowWebviewProvider";
 
 let treeProvider: PromptTreeProvider;
 
-const PROMPTO_FILE_METADATA_START_REGEX = /^\s*<!--\s*prompto\s*$/;
-const PROMPTO_FILE_METADATA_END_REGEX = /^\s*-->\s*$/;
-const PROMPTO_FILE_METADATA_KEY_VALUE_REGEX =
-  /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)\s*$/;
+const MD_META_FILE_METADATA_START_REGEX = /^\s*<!--\s*md-meta\s*$/;
+const COMMENT_END_REGEX = /^\s*-->\s*$/;
 
 interface PromptExecutionContext {
   promptName?: string;
@@ -550,7 +543,12 @@ async function navigatePromptDirectoryWithGlobalSearch(
 }
 
 function parsePromptFileMetadata(lines: string[]):
-  | { startLine: number; endLine: number; values: Record<string, string> }
+  | {
+      startLine: number;
+      endLine: number;
+      outputMode?: string;
+      deliveryTarget?: string;
+    }
   | undefined {
   let metadataStartLine = 0;
 
@@ -565,48 +563,35 @@ function parsePromptFileMetadata(lines: string[]):
     metadataStartLine += 1;
   }
 
-  if (
-    metadataStartLine >= lines.length ||
-    !PROMPTO_FILE_METADATA_START_REGEX.test(lines[metadataStartLine])
-  ) {
+  if (metadataStartLine >= lines.length) {
     return undefined;
   }
 
-  const values: Record<string, string> = {};
-
-  for (
-    let currentLineIndex = metadataStartLine + 1;
-    currentLineIndex < lines.length;
-    currentLineIndex++
-  ) {
-    const line = lines[currentLineIndex];
-
-    if (PROMPTO_FILE_METADATA_END_REGEX.test(line)) {
-      return {
-        startLine: metadataStartLine,
-        endLine: currentLineIndex,
-        values,
-      };
-    }
-
-    if (!line.trim()) {
-      continue;
-    }
-
-    const keyValueMatch = line.match(PROMPTO_FILE_METADATA_KEY_VALUE_REGEX);
-    if (!keyValueMatch) {
-      throw new Error(
-        "Invalid Prompto prompt metadata. Use key: value pairs inside a <!-- prompto ... --> block."
-      );
-    }
-
-    const [, key, value] = keyValueMatch;
-    values[key] = value;
+  if (!MD_META_FILE_METADATA_START_REGEX.test(lines[metadataStartLine])) {
+    return undefined;
   }
 
-  throw new Error(
-    "Unterminated Prompto prompt metadata block. Add --> to close it."
-  );
+  let metadataEndLine = -1;
+  for (let i = metadataStartLine + 1; i < lines.length; i++) {
+    if (COMMENT_END_REGEX.test(lines[i])) {
+      metadataEndLine = i;
+      break;
+    }
+  }
+
+  if (metadataEndLine < 0) {
+    throw new Error("Unterminated md-meta metadata block. Add --> to close it.");
+  }
+
+  const parsed = parseMarkdownMetaDocument(lines);
+  const prompto = parsed.document.namespaces.prompto;
+
+  return {
+    startLine: metadataStartLine,
+    endLine: metadataEndLine,
+    outputMode: prompto?.outputMode,
+    deliveryTarget: prompto?.deliveryTarget,
+  };
 }
 
 function getPromptFile(
@@ -648,10 +633,8 @@ function getPromptFile(
   return {
     content: promptContent.trim(),
     deliveryOptions: {
-      outputMode: parsePromptMetadataOutputMode(metadata?.values.outputMode),
-      deliveryTarget: parsePromptMetadataDeliveryTarget(
-        metadata?.values.deliveryTarget
-      ),
+      outputMode: parsePromptMetadataOutputMode(metadata?.outputMode),
+      deliveryTarget: parsePromptMetadataDeliveryTarget(metadata?.deliveryTarget),
     },
   };
 }
@@ -860,9 +843,11 @@ Write your prompt content here...
 <!-- Instructions (will be ignored when using the prompt):
 - Use multiple lines naturally
 - Optional prompt-level metadata can be added above the body like:
-- <!-- prompto
-  - outputMode: chatSubmit
-  - deliveryTarget: githubCopilotChat
+- <!-- md-meta
+-   version: 1
+-   prompto:
+-     outputMode: chatSubmit
+-     deliveryTarget: githubCopilotChat
 - -->
   - outputMode overrides User Settings for this prompt only
   - deliveryTarget overrides User Settings for this prompt only
@@ -900,37 +885,10 @@ async function runMarkdownPromptBlock(
   try {
     const sourceDocument = await vscode.workspace.openTextDocument(documentUri);
 
-    // 旧路径：现有逻辑不变
-    const promptBlock = getMarkdownPromptBlockAtHeadingLine(
-      sourceDocument,
-      headingLine
-    );
-
     const workspaceFolder =
       vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
       vscode.workspace.workspaceFolders?.[0];
 
-    if (promptBlock) {
-      await showPromptPicker({
-        promptName: promptBlock.headingText,
-        sourceDocument,
-        deliveryOptions: {
-          outputMode: parsePromptMetadataOutputMode(
-            promptBlock.variables.outputMode
-          ),
-          deliveryTarget: parsePromptMetadataDeliveryTarget(
-            promptBlock.variables.deliveryTarget
-          ),
-        },
-        workspaceFolder,
-        selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(
-          promptBlock
-        ),
-      });
-      return;
-    }
-
-    // 新路径：从 md-meta 归一化数据中查找
     const lines = getDocumentLines(sourceDocument);
     const prompto = findPromptoMetaForHeading(lines, headingLine);
 
@@ -968,35 +926,10 @@ async function runMarkdownPromptAction(
   try {
     const sourceDocument = await vscode.workspace.openTextDocument(documentUri);
 
-    // 旧路径：现有逻辑不变
-    const promptAction = getMarkdownPromptActionAtLine(sourceDocument, anchorLine);
-
     const workspaceFolder =
       vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
       vscode.workspace.workspaceFolders?.[0];
 
-    if (promptAction) {
-      await showPromptPicker({
-        promptName: promptAction.title,
-        sourceDocument,
-        deliveryOptions: {
-          outputMode: parsePromptMetadataOutputMode(
-            promptAction.variables.outputMode
-          ),
-          deliveryTarget: parsePromptMetadataDeliveryTarget(
-            promptAction.variables.deliveryTarget
-          ),
-        },
-        suppressNoSelectedTextPrompt: true,
-        workspaceFolder,
-        selectedTextContext: getSelectedTextContextForMarkdownPromptAction(
-          promptAction
-        ),
-      });
-      return;
-    }
-
-    // 新路径：从 md-meta 归一化数据中查找
     const lines = getDocumentLines(sourceDocument);
     const prompto = findPromptoMetaForAction(lines, anchorLine);
 

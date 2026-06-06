@@ -19,10 +19,6 @@ import {
   parsePromptOutputMode,
   PromptDeliveryOptions,
 } from "../services/PromptDeliveryService";
-import {
-  getMarkdownPromptBlockAtHeadingLine,
-  getSelectedTextContextForMarkdownPromptBlock,
-} from "../services/MarkdownPromptBlockService";
 
 export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "prompto.flowView";
@@ -126,34 +122,6 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
 
     const lines = getDocumentLines(this._currentDocument);
 
-    // 尝试旧路径
-    const promptBlock = getMarkdownPromptBlockAtHeadingLine(
-      this._currentDocument,
-      headingLine
-    );
-
-    if (promptBlock) {
-      const workspaceFolder =
-        vscode.workspace.getWorkspaceFolder(this._currentDocument.uri) ??
-        vscode.workspace.workspaceFolders?.[0];
-
-      await this._executePrompt({
-        promptName: promptBlock.headingText,
-        deliveryOptions: {
-          outputMode: parsePromptOutputMode(
-            promptBlock.variables.outputMode
-          ),
-          deliveryTarget: parsePromptDeliveryTarget(
-            promptBlock.variables.deliveryTarget
-          ),
-        },
-        selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(promptBlock),
-        workspaceFolder,
-      });
-      return;
-    }
-
-    // 新路径
     const prompto = findPromptoMetaForHeading(lines, headingLine);
     if (!prompto) {
       vscode.window.showErrorMessage("No prompt metadata found for this node.");

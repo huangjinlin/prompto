@@ -1,17 +1,13 @@
 import * as vscode from "vscode";
 
-const PROMPTO_METADATA_START_REGEX = /^\s*<!--\s*prompto\s*$/;
-const PROMPTO_ACTION_METADATA_START_REGEX =
-  /^\s*<!--\s*prompto-action\s*$/;
 const MD_META_START_REGEX = /^\s*<!--\s*md-meta\s*$/;
 const PROMPTO_METADATA_END_REGEX = /^\s*-->\s*$/;
-const TOP_LEVEL_HEADING_REGEX = /^#\s+.+$/;
 const METADATA_KEY_REGEX = /^\s*([A-Za-z_][A-Za-z0-9_]*)?\s*$/;
 const METADATA_VALUE_REGEX =
   /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-zA-Z-]*)$/;
 const PROMPT_CONTENT_BLOCK_REGEX = /^\s*promptContent\s*:\s*\|\s*$/;
 
-type PromptMetadataUsage = "promptFile" | "promptBlock" | "promptAction" | "mdMeta";
+type PromptMetadataUsage = "mdMeta";
 
 interface PromptMetadataContext {
   usage: PromptMetadataUsage;
@@ -215,108 +211,6 @@ const OUTLINE_STATUS_VALUES = [
   { label: "cancelled", detail: "Cancelled", documentation: "No longer needed." },
 ];
 
-const PROMPT_FILE_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
-  {
-    label: "outputMode",
-    detail: "Override output behavior",
-    documentation:
-      "Overrides the workspace-level prompto.outputMode for this prompt file.",
-    insertText: "outputMode: ",
-  },
-  {
-    label: "deliveryTarget",
-    detail: "Override delivery target",
-    documentation:
-      "Overrides the workspace-level prompto.deliveryTarget for this prompt file.",
-    insertText: "deliveryTarget: ",
-  },
-];
-
-const PROMPT_BLOCK_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
-  {
-    label: "prompt",
-    detail: "Reference a saved prompt file",
-    documentation:
-      "Resolves a prompt markdown file from the configured prompts directory.",
-    insertText: new vscode.SnippetString("prompt: ${1:review/code-review}"),
-  },
-  {
-    label: "promptContent",
-    detail: "Inline prompt content",
-    documentation:
-      "Provides prompt content inline instead of referencing a saved prompt file.",
-    insertText: new vscode.SnippetString("promptContent: |\n\t$0"),
-  },
-  {
-    label: "outputMode",
-    detail: "Override output behavior",
-    documentation:
-      "Overrides the workspace-level prompto.outputMode for this markdown block.",
-    insertText: "outputMode: ",
-  },
-  {
-    label: "deliveryTarget",
-    detail: "Override delivery target",
-    documentation:
-      "Overrides the workspace-level prompto.deliveryTarget for this markdown block.",
-    insertText: "deliveryTarget: ",
-  },
-  {
-    label: "customVariable",
-    detail: "Example custom variable",
-    documentation:
-      "Any other key can be used as a custom variable value for placeholders like {{customVariable}}.",
-    insertText: new vscode.SnippetString("${1:customVariable}: ${2:value}"),
-    kind: vscode.CompletionItemKind.Snippet,
-  },
-];
-
-const PROMPT_ACTION_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
-  {
-    label: "title",
-    detail: "CodeLens title",
-    documentation:
-      "Required for prompto-action. The CodeLens text is taken directly from this title.",
-    insertText: "title: ",
-  },
-  {
-    label: "prompt",
-    detail: "Reference a saved prompt file",
-    documentation:
-      "Resolves a prompt markdown file from the configured prompts directory.",
-    insertText: new vscode.SnippetString("prompt: ${1:review/code-review}"),
-  },
-  {
-    label: "promptContent",
-    detail: "Inline prompt content",
-    documentation:
-      "Provides prompt content inline instead of referencing a saved prompt file.",
-    insertText: new vscode.SnippetString("promptContent: |\n\t$0"),
-  },
-  {
-    label: "outputMode",
-    detail: "Override output behavior",
-    documentation:
-      "Overrides the workspace-level prompto.outputMode for this prompto-action.",
-    insertText: "outputMode: ",
-  },
-  {
-    label: "deliveryTarget",
-    detail: "Override delivery target",
-    documentation:
-      "Overrides the workspace-level prompto.deliveryTarget for this prompto-action.",
-    insertText: "deliveryTarget: ",
-  },
-  {
-    label: "customVariable",
-    detail: "Example custom variable",
-    documentation:
-      "Any other key can be used as a custom variable value for placeholders like {{customVariable}}.",
-    insertText: new vscode.SnippetString("${1:customVariable}: ${2:value}"),
-    kind: vscode.CompletionItemKind.Snippet,
-  },
-];
-
 export class MarkdownPromptMetadataCompletionProvider
   implements vscode.CompletionItemProvider
 {
@@ -369,26 +263,6 @@ function getMetadataStartCompletionItems(
     position.character
   );
 
-  const promptoItem = new vscode.CompletionItem(
-    "prompto",
-    vscode.CompletionItemKind.Keyword
-  );
-  promptoItem.detail = "Prompto metadata block";
-  promptoItem.documentation =
-    "Starts a Prompto metadata block for a prompt file or heading-based markdown block.";
-  promptoItem.insertText = "prompto";
-  promptoItem.range = replacementRange;
-
-  const promptoActionItem = new vscode.CompletionItem(
-    "prompto-action",
-    vscode.CompletionItemKind.Keyword
-  );
-  promptoActionItem.detail = "Prompto action metadata block";
-  promptoActionItem.documentation =
-    "Starts a prompto-action metadata block for a body CodeLens action.";
-  promptoActionItem.insertText = "prompto-action";
-  promptoActionItem.range = replacementRange;
-
   const mdMetaItem = new vscode.CompletionItem(
     "md-meta",
     vscode.CompletionItemKind.Keyword
@@ -401,7 +275,7 @@ function getMetadataStartCompletionItems(
   );
   mdMetaItem.range = replacementRange;
 
-  return [mdMetaItem, promptoItem, promptoActionItem];
+  return [mdMetaItem];
 }
 
 function getPromptMetadataContext(
@@ -423,21 +297,9 @@ function getPromptMetadataContext(
       return undefined;
     }
 
-    if (PROMPTO_ACTION_METADATA_START_REGEX.test(lineText)) {
-      startLine = lineIndex;
-      usage = "promptAction";
-      break;
-    }
-
     if (MD_META_START_REGEX.test(lineText)) {
       startLine = lineIndex;
       usage = "mdMeta";
-      break;
-    }
-
-    if (PROMPTO_METADATA_START_REGEX.test(lineText)) {
-      startLine = lineIndex;
-      usage = inferPromptoMetadataUsage(document, lineIndex);
       break;
     }
   }
@@ -458,30 +320,6 @@ function getPromptMetadataContext(
     startIndent: getIndentLength(document.lineAt(startLine).text),
     inPromptContentBody: isInPromptContentBody(document, position, startLine),
   };
-}
-
-function inferPromptoMetadataUsage(
-  document: vscode.TextDocument,
-  startLine: number
-): PromptMetadataUsage {
-  const nonEmptyLinesBeforeStart: string[] = [];
-
-  for (let lineIndex = 0; lineIndex < startLine; lineIndex++) {
-    const lineText = document.lineAt(lineIndex).text.trim();
-    if (lineText) {
-      nonEmptyLinesBeforeStart.push(lineText);
-    }
-  }
-
-  if (
-    nonEmptyLinesBeforeStart.length === 0 ||
-    (nonEmptyLinesBeforeStart.length === 1 &&
-      TOP_LEVEL_HEADING_REGEX.test(nonEmptyLinesBeforeStart[0]))
-  ) {
-    return "promptFile";
-  }
-
-  return "promptBlock";
 }
 
 function isInPromptContentBody(
@@ -646,17 +484,15 @@ function getPromptVariableCompletionItems(
 ): vscode.CompletionItem[] {
   const items: vscode.CompletionItem[] = [];
 
-  if (usage !== "promptAction") {
-    const selectedTextItem = new vscode.CompletionItem(
-      "selectedText",
-      vscode.CompletionItemKind.Variable
-    );
-    selectedTextItem.detail = "Prompt variable";
-    selectedTextItem.documentation =
-      "Injects the selected text or markdown block body into the prompt.";
-    selectedTextItem.insertText = "{{selectedText}}";
-    items.push(selectedTextItem);
-  }
+  const selectedTextItem = new vscode.CompletionItem(
+    "selectedText",
+    vscode.CompletionItemKind.Variable
+  );
+  selectedTextItem.detail = "Prompt variable";
+  selectedTextItem.documentation =
+    "Injects the selected text or markdown block body into the prompt.";
+  selectedTextItem.insertText = "{{selectedText}}";
+  items.push(selectedTextItem);
 
   const fileNameItem = new vscode.CompletionItem(
     "fileName",
@@ -687,19 +523,11 @@ function getMetadataKeysForUsage(
   position?: vscode.Position,
   startLine?: number
 ): PromptMetadataKeyDefinition[] {
-  if (usage === "promptFile") {
-    return PROMPT_FILE_METADATA_KEYS;
-  }
-
-  if (usage === "promptAction") {
-    return PROMPT_ACTION_METADATA_KEYS;
-  }
-
   if (usage === "mdMeta" && document && position && startLine !== undefined) {
     return getMdMetaKeysForIndent(document, position, startLine);
   }
 
-  return PROMPT_BLOCK_METADATA_KEYS;
+  return MD_META_ROOT_KEYS;
 }
 
 function getMdMetaKeysForIndent(
