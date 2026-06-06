@@ -2,8 +2,9 @@
 
 ## 1. 状态
 
-- 状态：待实施草案
+- 状态：已冻结
 - 版本：1
+- 冻结日期：2026-06-06
 - 规范宿主块：`md-meta`
 - 主要消费者：Prompto、Markdown Outline Viewer、后续基于 Markdown 的扩展
 
@@ -284,7 +285,8 @@ outline:
 
 规则如下：
 
-- `prompt` 与 `promptContent` 不能在同一作用域同时出现
+- `prompt` 与 `promptContent` 不应在同一作用域同时出现
+- 旧 `prompto` 块中若同时出现两者，实现层默认取 `promptContent`
 - `title` 推荐用于动作作用域，在标题节点作用域中可被忽略
 
 示例：
@@ -382,7 +384,7 @@ outline:
 - 内容是否符合支持的 YAML 子集
 - `version` 是否存在且受支持
 - 同一锚点是否定义了多个相互竞争的宿主块
-- `prompto.prompt` 与 `prompto.promptContent` 是否同时存在
+- `prompto.prompt` 与 `prompto.promptContent` 是否同时存在（旧块默认取 `promptContent`，新 `md-meta` 块应报诊断警告）
 - 在具备全文件视图时，`flow.entry`、`flow.next`、`flow.branches[*].to` 是否能解析到合法节点
 
 当环境允许时，校验失败应尽量以诊断形式呈现给用户。
@@ -428,7 +430,7 @@ prompto:
     Summarize the section
 ```
 
-### 13.3 旧 `outline`
+旧 `prompto-action` 保持现有功能不变，v1 不为其增加 `outputMode` 和 `deliveryTarget` 支持。
 
 ```md
 <!-- outline
@@ -538,3 +540,20 @@ outline:
 3. 节点一旦被 flow 引用，就保持 `flow.id` 稳定。
 4. 对共享配置优先使用文档级 `defaults`。
 5. 保留旧语法兼容，但新的补充字段不要继续堆在旧块里。
+
+## 16. 冻结记录
+
+- 冻结日期：2026-06-06
+- 规范版本：v1
+- 宿主块名：`md-meta`
+- 保留根字段：`version`、`scope`、`defaults`
+- 标准命名空间：`prompto`、`flow`、`outline`
+- 后续新增命名空间：走自定义命名空间规则（小写 kebab-case，消费方忽略不认识的）
+- prompto 字段：`prompt`、`promptContent`、`deliveryTarget`、`outputMode`、`title`
+- prompto 互斥规则：`prompt` 与 `promptContent` 不应同时出现；旧 `prompto` 块若同时出现两者，默认取 `promptContent`
+- flow 分支结构：采用 YAML 数组对象 `[{label, to}]`
+- flow 消费顺序：`branches` 优先于 `next`
+- outline v1 字段：仅 `status`，后续扩展走 v2
+- outline 推荐状态值：`todo`、`doing`、`done`、`blocked`、`cancelled`，可为空，未知值优雅降级
+- 旧 `prompto-action`：保持现有功能不变，v1 不增加 `outputMode` 和 `deliveryTarget`
+- 旧 `prompto` 冲突处理：`prompt` 与 `promptContent` 同时出现时默认取 `promptContent`

@@ -37,6 +37,11 @@
         "command": "prompto.addPrompt",
         "title": "Prompto: Add New Prompt",
         "icon": "$(add)"
+      },
+      {
+        "command": "prompto.showFlow",
+        "title": "Prompto: Show Flow Graph",
+        "icon": "$(project)"
       }
     ],
     "views": {
@@ -45,6 +50,22 @@
           "id": "promptoTree",
           "name": "Prompto",
           "when": "true"
+        }
+      ],
+      "prompto": [
+        {
+          "id": "prompto.flowView",
+          "name": "Flow Graph",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "prompto",
+          "title": "Prompto",
+          "icon": "$(symbol-method)"
         }
       ]
     },
@@ -80,6 +101,10 @@
         {
           "command": "prompto.addPrompt",
           "when": "true"
+        },
+        {
+          "command": "prompto.showFlow",
+          "when": "editorLangId == markdown"
         }
       ]
     },

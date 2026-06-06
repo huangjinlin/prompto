@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 const PROMPTO_METADATA_START_REGEX = /^\s*<!--\s*prompto\s*$/;
 const PROMPTO_ACTION_METADATA_START_REGEX =
   /^\s*<!--\s*prompto-action\s*$/;
+const MD_META_START_REGEX = /^\s*<!--\s*md-meta\s*$/;
 const PROMPTO_METADATA_END_REGEX = /^\s*-->\s*$/;
 const TOP_LEVEL_HEADING_REGEX = /^#\s+.+$/;
 const METADATA_KEY_REGEX = /^\s*([A-Za-z_][A-Za-z0-9_]*)?\s*$/;
@@ -10,7 +11,7 @@ const METADATA_VALUE_REGEX =
   /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-zA-Z-]*)$/;
 const PROMPT_CONTENT_BLOCK_REGEX = /^\s*promptContent\s*:\s*\|\s*$/;
 
-type PromptMetadataUsage = "promptFile" | "promptBlock" | "promptAction";
+type PromptMetadataUsage = "promptFile" | "promptBlock" | "promptAction" | "mdMeta";
 
 interface PromptMetadataContext {
   usage: PromptMetadataUsage;
@@ -56,6 +57,162 @@ const DELIVERY_TARGET_VALUES = [
     detail: "Claude Code",
     documentation: "Deliver the prompt to the active terminal, intended for Claude Code.",
   },
+];
+
+// ── md-meta 补全定义 ──
+
+const MD_META_ROOT_KEYS: PromptMetadataKeyDefinition[] = [
+  {
+    label: "version",
+    detail: "Spec version (required)",
+    documentation: "Specification version number. Must be 1 for v1.",
+    insertText: "version: 1",
+  },
+  {
+    label: "scope",
+    detail: "Scope override",
+    documentation: "Explicitly set scope: document, node, or action. Usually auto-detected.",
+    insertText: new vscode.SnippetString("scope: ${1|document,node,action|}"),
+  },
+  {
+    label: "defaults",
+    detail: "Default namespace values",
+    documentation: "Default values inherited by lower-scope blocks.",
+    insertText: new vscode.SnippetString("defaults:\n\t$0"),
+  },
+  {
+    label: "prompto",
+    detail: "Prompto namespace",
+    documentation: "Prompt assembly and delivery configuration.",
+    insertText: new vscode.SnippetString("prompto:\n\t$0"),
+  },
+  {
+    label: "flow",
+    detail: "Flow namespace",
+    documentation: "Flow graph structure for visualization.",
+    insertText: new vscode.SnippetString("flow:\n\t$0"),
+  },
+  {
+    label: "outline",
+    detail: "Outline namespace",
+    documentation: "Outline panel display metadata.",
+    insertText: new vscode.SnippetString("outline:\n\t$0"),
+  },
+];
+
+const MD_META_PROMPTO_KEYS: PromptMetadataKeyDefinition[] = [
+  {
+    label: "prompt",
+    detail: "Reference a saved prompt file",
+    documentation: "Resolves a prompt markdown file from the configured prompts directory.",
+    insertText: new vscode.SnippetString("prompt: ${1:review/code-review}"),
+  },
+  {
+    label: "promptContent",
+    detail: "Inline prompt content",
+    documentation: "Provides prompt content inline instead of referencing a saved prompt file.",
+    insertText: new vscode.SnippetString("promptContent: |\n\t$0"),
+  },
+  {
+    label: "deliveryTarget",
+    detail: "Override delivery target",
+    documentation: "Overrides the workspace-level prompto.deliveryTarget.",
+    insertText: "deliveryTarget: ",
+  },
+  {
+    label: "outputMode",
+    detail: "Override output behavior",
+    documentation: "Overrides the workspace-level prompto.outputMode.",
+    insertText: "outputMode: ",
+  },
+  {
+    label: "title",
+    detail: "Action title",
+    documentation: "Display title for action-scope prompts.",
+    insertText: new vscode.SnippetString("title: ${1:Action Title}"),
+  },
+];
+
+const MD_META_FLOW_KEYS: PromptMetadataKeyDefinition[] = [
+  {
+    label: "id",
+    detail: "Node/flow id (required for graph nodes)",
+    documentation: "Stable identifier for this node or flow.",
+    insertText: new vscode.SnippetString("id: ${1:node.id}"),
+  },
+  {
+    label: "title",
+    detail: "Flow title",
+    documentation: "Display title for the flow graph.",
+    insertText: new vscode.SnippetString("title: ${1:Flow Title}"),
+  },
+  {
+    label: "direction",
+    detail: "Graph direction",
+    documentation: "Layout direction: TB, LR, BT, or RL.",
+    insertText: new vscode.SnippetString("direction: ${1|TB,LR,BT,RL|}"),
+  },
+  {
+    label: "entry",
+    detail: "Entry node id",
+    documentation: "The starting node id for the flow graph.",
+    insertText: new vscode.SnippetString("entry: ${1:start.node}"),
+  },
+  {
+    label: "kind",
+    detail: "Node kind",
+    documentation: "Node type: start, action, decision, or end.",
+    insertText: new vscode.SnippetString("kind: ${1|start,action,decision,end|}"),
+  },
+  {
+    label: "next",
+    detail: "Default next node",
+    documentation: "The default next node id.",
+    insertText: new vscode.SnippetString("next: ${1:next.node}"),
+  },
+  {
+    label: "group",
+    detail: "Logical group",
+    documentation: "Optional logical grouping for this node.",
+    insertText: new vscode.SnippetString("group: ${1:group-name}"),
+  },
+  {
+    label: "branches",
+    detail: "Decision branches",
+    documentation: "Explicit branch definitions for decision nodes.",
+    insertText: new vscode.SnippetString("branches:\n\t- label: ${1:Branch Label}\n\t  to: ${2:target.node}"),
+  },
+];
+
+const MD_META_OUTLINE_KEYS: PromptMetadataKeyDefinition[] = [
+  {
+    label: "status",
+    detail: "Node status",
+    documentation: "Status shown in outline panel. Recommended: todo, doing, done, blocked, cancelled.",
+    insertText: new vscode.SnippetString("status: ${1|todo,doing,done,blocked,cancelled|}"),
+  },
+];
+
+const FLOW_KIND_VALUES = [
+  { label: "start", detail: "Start node", documentation: "Entry point of the flow." },
+  { label: "action", detail: "Action node", documentation: "Executable action step." },
+  { label: "decision", detail: "Decision node", documentation: "Branch point with conditions." },
+  { label: "end", detail: "End node", documentation: "Terminal point of the flow." },
+];
+
+const FLOW_DIRECTION_VALUES = [
+  { label: "TB", detail: "Top to bottom", documentation: "Vertical layout, top to bottom." },
+  { label: "LR", detail: "Left to right", documentation: "Horizontal layout, left to right." },
+  { label: "BT", detail: "Bottom to top", documentation: "Vertical layout, bottom to top." },
+  { label: "RL", detail: "Right to left", documentation: "Horizontal layout, right to left." },
+];
+
+const OUTLINE_STATUS_VALUES = [
+  { label: "todo", detail: "To do", documentation: "Not yet started." },
+  { label: "doing", detail: "In progress", documentation: "Currently being worked on." },
+  { label: "done", detail: "Done", documentation: "Completed." },
+  { label: "blocked", detail: "Blocked", documentation: "Blocked by dependency or issue." },
+  { label: "cancelled", detail: "Cancelled", documentation: "No longer needed." },
 ];
 
 const PROMPT_FILE_METADATA_KEYS: PromptMetadataKeyDefinition[] = [
@@ -232,7 +389,19 @@ function getMetadataStartCompletionItems(
   promptoActionItem.insertText = "prompto-action";
   promptoActionItem.range = replacementRange;
 
-  return [promptoItem, promptoActionItem];
+  const mdMetaItem = new vscode.CompletionItem(
+    "md-meta",
+    vscode.CompletionItemKind.Keyword
+  );
+  mdMetaItem.detail = "Unified metadata block (v1)";
+  mdMetaItem.documentation =
+    "Starts a unified metadata block with namespace support (prompto, flow, outline). Recommended for new documents.";
+  mdMetaItem.insertText = new vscode.SnippetString(
+    "md-meta\nversion: 1\n$0\n-->"
+  );
+  mdMetaItem.range = replacementRange;
+
+  return [mdMetaItem, promptoItem, promptoActionItem];
 }
 
 function getPromptMetadataContext(
@@ -257,6 +426,12 @@ function getPromptMetadataContext(
     if (PROMPTO_ACTION_METADATA_START_REGEX.test(lineText)) {
       startLine = lineIndex;
       usage = "promptAction";
+      break;
+    }
+
+    if (MD_META_START_REGEX.test(lineText)) {
+      startLine = lineIndex;
+      usage = "mdMeta";
       break;
     }
 
@@ -359,7 +534,7 @@ function getMetadataKeyCompletionItems(
     position.character
   );
 
-  return getMetadataKeysForUsage(metadataContext.usage).map((definition, index) => {
+  return getMetadataKeysForUsage(metadataContext.usage, document, position, metadataContext.startLine).map((definition, index) => {
     const item = new vscode.CompletionItem(
       definition.label,
       definition.kind ?? vscode.CompletionItemKind.Property
@@ -421,6 +596,48 @@ function getMetadataValueCompletionItems(
     });
   }
 
+  if (key === "kind") {
+    return FLOW_KIND_VALUES.map((definition) => {
+      const item = new vscode.CompletionItem(
+        definition.label,
+        vscode.CompletionItemKind.EnumMember
+      );
+      item.detail = definition.detail;
+      item.documentation = definition.documentation;
+      item.insertText = definition.label;
+      item.range = replacementRange;
+      return item;
+    });
+  }
+
+  if (key === "direction") {
+    return FLOW_DIRECTION_VALUES.map((definition) => {
+      const item = new vscode.CompletionItem(
+        definition.label,
+        vscode.CompletionItemKind.EnumMember
+      );
+      item.detail = definition.detail;
+      item.documentation = definition.documentation;
+      item.insertText = definition.label;
+      item.range = replacementRange;
+      return item;
+    });
+  }
+
+  if (key === "status") {
+    return OUTLINE_STATUS_VALUES.map((definition) => {
+      const item = new vscode.CompletionItem(
+        definition.label,
+        vscode.CompletionItemKind.EnumMember
+      );
+      item.detail = definition.detail;
+      item.documentation = definition.documentation;
+      item.insertText = definition.label;
+      item.range = replacementRange;
+      return item;
+    });
+  }
+
   return [];
 }
 
@@ -465,7 +682,10 @@ function getPromptVariableCompletionItems(
 }
 
 function getMetadataKeysForUsage(
-  usage: PromptMetadataUsage
+  usage: PromptMetadataUsage,
+  document?: vscode.TextDocument,
+  position?: vscode.Position,
+  startLine?: number
 ): PromptMetadataKeyDefinition[] {
   if (usage === "promptFile") {
     return PROMPT_FILE_METADATA_KEYS;
@@ -475,7 +695,52 @@ function getMetadataKeysForUsage(
     return PROMPT_ACTION_METADATA_KEYS;
   }
 
+  if (usage === "mdMeta" && document && position && startLine !== undefined) {
+    return getMdMetaKeysForIndent(document, position, startLine);
+  }
+
   return PROMPT_BLOCK_METADATA_KEYS;
+}
+
+function getMdMetaKeysForIndent(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  startLine: number
+): PromptMetadataKeyDefinition[] {
+  const startIndent = getIndentLength(document.lineAt(startLine).text);
+  const currentIndent = getIndentLength(document.lineAt(position.line).text);
+
+  // 根级：与 md-meta 同缩进
+  if (currentIndent <= startIndent) {
+    return MD_META_ROOT_KEYS;
+  }
+
+  // 命名空间内：向上找到最近的 key，判断属于哪个命名空间
+  for (let i = position.line - 1; i > startLine; i--) {
+    const line = document.lineAt(i).text;
+    const trimmed = line.trimStart();
+    const lineIndent = getIndentLength(line);
+
+    // 找到父级缩进的 key
+    if (lineIndent < currentIndent && trimmed) {
+      const nsMatch = trimmed.match(/^(prompto|flow|outline|defaults)\s*:/);
+      if (nsMatch) {
+        const ns = nsMatch[1];
+        if (ns === "prompto" || ns === "defaults") {
+          return MD_META_PROMPTO_KEYS;
+        }
+        if (ns === "flow") {
+          return MD_META_FLOW_KEYS;
+        }
+        if (ns === "outline") {
+          return MD_META_OUTLINE_KEYS;
+        }
+      }
+      break;
+    }
+  }
+
+  return MD_META_ROOT_KEYS;
 }
 
 function getIndentLength(lineText: string): number {

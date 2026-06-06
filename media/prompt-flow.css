@@ -1,0 +1,153 @@
+:root {
+  --flow-bg: var(--vscode-editor-background);
+  --flow-text: var(--vscode-editor-foreground);
+  --flow-border: var(--vscode-input-border);
+  --flow-node-bg: var(--vscode-input-background);
+  --flow-node-hover: var(--vscode-list-hoverBackground);
+  --flow-node-active: var(--vscode-list-activeSelectionBackground);
+  --flow-edge: var(--vscode-descriptionForeground);
+  --flow-label: var(--vscode-descriptionForeground);
+  --flow-start: #4ec9b0;
+  --flow-action: #569cd6;
+  --flow-decision: #c586c0;
+  --flow-end: #d4d4d4;
+  --flow-accent: var(--vscode-textLink-foreground);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--flow-bg);
+  color: var(--flow-text);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  padding: 8px;
+  overflow: auto;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--vscode-descriptionForeground);
+  text-align: center;
+  gap: 8px;
+}
+
+.empty-state .icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.flow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--flow-border);
+  margin-bottom: 12px;
+}
+
+.flow-header .title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.flow-header .actions {
+  display: flex;
+  gap: 4px;
+}
+
+.flow-header .actions button {
+  background: none;
+  border: 1px solid var(--flow-border);
+  color: var(--flow-text);
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.flow-header .actions button:hover {
+  background: var(--flow-node-hover);
+}
+
+.flow-svg {
+  width: 100%;
+  min-height: 300px;
+}
+
+.flow-node {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.flow-node:hover {
+  opacity: 0.85;
+}
+
+.flow-node rect,
+.flow-node polygon,
+.flow-node circle {
+  stroke: var(--flow-border);
+  stroke-width: 1.5;
+  transition: stroke 0.15s, fill 0.15s;
+}
+
+.flow-node:hover rect,
+.flow-node:hover polygon,
+.flow-node:hover circle {
+  stroke: var(--flow-accent);
+}
+
+.flow-node.highlighted rect,
+.flow-node.highlighted polygon,
+.flow-node.highlighted circle {
+  stroke: var(--flow-accent);
+  stroke-width: 2;
+}
+
+.flow-node .label {
+  fill: var(--flow-text);
+  font-size: 12px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.flow-edge {
+  fill: none;
+  stroke: var(--flow-edge);
+  stroke-width: 1.5;
+  marker-end: url(#arrowhead);
+}
+
+.flow-edge-label {
+  fill: var(--flow-label);
+  font-size: 11px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.flow-diagnostics {
+  margin-top: 12px;
+  padding: 8px;
+  background: var(--vscode-inputValidation-warningBackground);
+  border: 1px solid var(--vscode-inputValidation-warningBorder);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.flow-diagnostics .diagnostic {
+  padding: 2px 0;
+}
+
+.flow-diagnostics .diagnostic::before {
+  content: "⚠ ";
+}

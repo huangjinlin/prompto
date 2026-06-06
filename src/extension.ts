@@ -28,6 +28,15 @@ import {
   getSelectedTextContextForMarkdownPromptAction,
   getSelectedTextContextForMarkdownPromptBlock,
 } from "./services/MarkdownPromptBlockService";
+import {
+  findPromptoMetaForHeading,
+  findPromptoMetaForAction,
+  getDocumentLines,
+  getHeadingText,
+  getNodeBody,
+  buildSelectedTextContextFromPrompto,
+} from "./services/MarkdownMetaBridgeService";
+import { PromptFlowWebviewProvider } from "./webview/PromptFlowWebviewProvider";
 
 let treeProvider: PromptTreeProvider;
 
@@ -162,6 +171,41 @@ export function activate(context: vscode.ExtensionContext) {
       }
     })
   );
+
+  // 注册 Flow 面板
+  const flowProvider = new PromptFlowWebviewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      PromptFlowWebviewProvider.viewType,
+      flowProvider
+    )
+  );
+
+  // 监听编辑器切换，自动刷新 Flow 面板
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor?.document.languageId === "markdown") {
+        flowProvider.updateFlow(editor.document);
+      } else {
+        flowProvider.clearFlow();
+      }
+    })
+  );
+
+  // 监听文档变化，自动刷新 Flow 面板
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const editor = vscode.window.activeTextEditor;
+      if (
+        editor &&
+        event.document === editor.document &&
+        editor.document.languageId === "markdown"
+      ) {
+        flowProvider.updateFlow(editor.document);
+      }
+    })
+  );
+
   registerCommands(context);
 }
 
@@ -216,7 +260,11 @@ function registerCommands(context: vscode.ExtensionContext) {
       async (categoryPath?: string) => {
         await showAddPromptDialog(categoryPath);
       }
-    )
+    ),
+
+    vscode.commands.registerCommand("prompto.showFlow", async () => {
+      await vscode.commands.executeCommand("prompto.flowView.focus");
+    })
   );
 }
 
@@ -851,36 +899,61 @@ async function runMarkdownPromptBlock(
 ): Promise<void> {
   try {
     const sourceDocument = await vscode.workspace.openTextDocument(documentUri);
+
+    // 旧路径：现有逻辑不变
     const promptBlock = getMarkdownPromptBlockAtHeadingLine(
       sourceDocument,
       headingLine
     );
 
-    if (!promptBlock) {
+    const workspaceFolder =
+      vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
+      vscode.workspace.workspaceFolders?.[0];
+
+    if (promptBlock) {
+      await showPromptPicker({
+        promptName: promptBlock.headingText,
+        sourceDocument,
+        deliveryOptions: {
+          outputMode: parsePromptMetadataOutputMode(
+            promptBlock.variables.outputMode
+          ),
+          deliveryTarget: parsePromptMetadataDeliveryTarget(
+            promptBlock.variables.deliveryTarget
+          ),
+        },
+        workspaceFolder,
+        selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(
+          promptBlock
+        ),
+      });
+      return;
+    }
+
+    // 新路径：从 md-meta 归一化数据中查找
+    const lines = getDocumentLines(sourceDocument);
+    const prompto = findPromptoMetaForHeading(lines, headingLine);
+
+    if (!prompto) {
       vscode.window.showErrorMessage(
         "Prompto block not found. Try saving the file or reopening the editor."
       );
       return;
     }
 
-    const workspaceFolder =
-      vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
-      vscode.workspace.workspaceFolders?.[0];
-
     await showPromptPicker({
-      promptName: promptBlock.headingText,
+      promptName: getHeadingText(lines, headingLine),
       sourceDocument,
       deliveryOptions: {
-        outputMode: parsePromptMetadataOutputMode(
-          promptBlock.variables.outputMode
-        ),
+        outputMode: parsePromptMetadataOutputMode(prompto.outputMode),
         deliveryTarget: parsePromptMetadataDeliveryTarget(
-          promptBlock.variables.deliveryTarget
+          prompto.deliveryTarget
         ),
       },
       workspaceFolder,
-      selectedTextContext: getSelectedTextContextForMarkdownPromptBlock(
-        promptBlock
+      selectedTextContext: buildSelectedTextContextFromPrompto(
+        prompto,
+        getNodeBody(lines, headingLine)
       ),
     });
   } catch (error) {
@@ -894,35 +967,58 @@ async function runMarkdownPromptAction(
 ): Promise<void> {
   try {
     const sourceDocument = await vscode.workspace.openTextDocument(documentUri);
+
+    // 旧路径：现有逻辑不变
     const promptAction = getMarkdownPromptActionAtLine(sourceDocument, anchorLine);
 
-    if (!promptAction) {
+    const workspaceFolder =
+      vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
+      vscode.workspace.workspaceFolders?.[0];
+
+    if (promptAction) {
+      await showPromptPicker({
+        promptName: promptAction.title,
+        sourceDocument,
+        deliveryOptions: {
+          outputMode: parsePromptMetadataOutputMode(
+            promptAction.variables.outputMode
+          ),
+          deliveryTarget: parsePromptMetadataDeliveryTarget(
+            promptAction.variables.deliveryTarget
+          ),
+        },
+        suppressNoSelectedTextPrompt: true,
+        workspaceFolder,
+        selectedTextContext: getSelectedTextContextForMarkdownPromptAction(
+          promptAction
+        ),
+      });
+      return;
+    }
+
+    // 新路径：从 md-meta 归一化数据中查找
+    const lines = getDocumentLines(sourceDocument);
+    const prompto = findPromptoMetaForAction(lines, anchorLine);
+
+    if (!prompto) {
       vscode.window.showErrorMessage(
         "Prompto action not found. Try saving the file or reopening the editor."
       );
       return;
     }
 
-    const workspaceFolder =
-      vscode.workspace.getWorkspaceFolder(sourceDocument.uri) ??
-      vscode.workspace.workspaceFolders?.[0];
-
     await showPromptPicker({
-      promptName: promptAction.title,
+      promptName: prompto.title || "Prompto Action",
       sourceDocument,
       deliveryOptions: {
-        outputMode: parsePromptMetadataOutputMode(
-          promptAction.variables.outputMode
-        ),
+        outputMode: parsePromptMetadataOutputMode(prompto.outputMode),
         deliveryTarget: parsePromptMetadataDeliveryTarget(
-          promptAction.variables.deliveryTarget
+          prompto.deliveryTarget
         ),
       },
       suppressNoSelectedTextPrompt: true,
       workspaceFolder,
-      selectedTextContext: getSelectedTextContextForMarkdownPromptAction(
-        promptAction
-      ),
+      selectedTextContext: buildSelectedTextContextFromPrompto(prompto),
     });
   } catch (error) {
     vscode.window.showErrorMessage(`Error running Prompto action: ${error}`);
