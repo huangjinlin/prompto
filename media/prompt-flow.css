@@ -26,7 +26,22 @@ body {
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
   padding: 8px;
-  overflow: auto;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+html {
+  height: 100%;
+}
+
+#flow-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .empty-state {
@@ -51,7 +66,8 @@ body {
   justify-content: space-between;
   padding: 4px 0 8px;
   border-bottom: 1px solid var(--flow-border);
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 
 .flow-header .title {
@@ -78,9 +94,25 @@ body {
   background: var(--flow-node-hover);
 }
 
+/* ── 视口容器：固定大小，不随侧边栏缩放 ── */
+.flow-viewport {
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  position: relative;
+  border: 1px solid var(--flow-border);
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.flow-viewport:active {
+  cursor: grabbing;
+}
+
 .flow-svg {
   width: 100%;
-  min-height: 300px;
+  height: 100%;
+  display: block;
 }
 
 .flow-node {
@@ -142,6 +174,7 @@ body {
   border: 1px solid var(--vscode-inputValidation-warningBorder);
   border-radius: 4px;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .flow-diagnostics .diagnostic {
@@ -150,4 +183,42 @@ body {
 
 .flow-diagnostics .diagnostic::before {
   content: "⚠ ";
+}
+
+/* ── 右键上下文菜单 ── */
+
+.flow-context-menu {
+  position: absolute;
+  z-index: 1000;
+  min-width: 140px;
+  background: var(--vscode-menu-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-input-border));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+}
+
+.flow-context-item {
+  padding: 5px 14px;
+  font-size: 12px;
+  color: var(--vscode-menu-foreground, var(--flow-text));
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.flow-context-item:hover {
+  background: var(--vscode-menu-selectionBackground, var(--flow-node-hover));
+  color: var(--vscode-menu-selectionForeground, var(--flow-text));
+}
+
+.flow-context-item.action-item {
+  padding-left: 20px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.flow-context-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--vscode-menu-separatorBackground, var(--flow-border));
 }

@@ -74,6 +74,24 @@ outline:
   status: todo
 -->
 1. 检查日报是否正常`01-我/实盘反馈/第10周/汇报/简版汇报-v1-20260605.md`
+<!-- md-meta
+version: 1
+scope: action
+prompto:
+  title: 测试1
+  promptContent: |
+    Summarize the current context.
+-->
+动作1。
+<!-- md-meta
+version: 1
+scope: action
+prompto:
+  title: 测试2
+  promptContent: |
+    Summarize the current context.
+-->
+动作2。
 
 ## ✅ 完成
 

@@ -4,11 +4,21 @@
  */
 
 import { parseMarkdownMetaDocument } from "./MarkdownMetaParserService";
-import type { MarkdownMetaDocument, NodeMeta, FlowMeta } from "../models/MarkdownMeta";
+import type { MarkdownMetaDocument, NodeMeta, FlowMeta, PromptoMeta } from "../models/MarkdownMeta";
 
 // ── 图模型类型 ──
 
 export type FlowNodeKind = "start" | "action" | "decision" | "end";
+
+export interface FlowNodePrompto {
+  title: string;
+  line: number;
+  isAction: boolean;
+  prompt?: string;
+  promptContent?: string;
+  deliveryTarget?: string;
+  outputMode?: string;
+}
 
 export interface FlowNode {
   id: string;
@@ -16,6 +26,7 @@ export interface FlowNode {
   kind: FlowNodeKind;
   line: number;
   group?: string;
+  promptoItems?: FlowNodePrompto[];
 }
 
 export interface FlowEdge {
@@ -106,6 +117,7 @@ export function buildFlowGraph(doc: MarkdownMetaDocument): FlowGraph {
       kind,
       line: node.line,
       group: flow.group,
+      promptoItems: collectPromptoItems(doc, node),
     });
   }
 
@@ -226,4 +238,51 @@ function findNextFlowNode(doc: MarkdownMetaDocument, currentLine: number): strin
   }
 
   return nearest?.namespaces.flow?.id;
+}
+
+function collectPromptoItems(doc: MarkdownMetaDocument, node: NodeMeta): FlowNodePrompto[] | undefined {
+  const items: FlowNodePrompto[] = [];
+
+  // 主 prompto（节点级）
+  const nodePrompto = node.namespaces.prompto;
+  if (nodePrompto && (nodePrompto.prompt || nodePrompto.promptContent)) {
+    items.push({
+      title: node.title,
+      line: node.line,
+      isAction: false,
+      prompt: nodePrompto.prompt,
+      promptContent: nodePrompto.promptContent,
+      deliveryTarget: nodePrompto.deliveryTarget,
+      outputMode: nodePrompto.outputMode,
+    });
+  }
+
+  // 收集归属此节点的 actions（行号在本 heading 到下一个同级/更高级 heading 之间）
+  let rangeEnd = Infinity;
+  for (const other of doc.nodes) {
+    if (other.line <= node.line) continue;
+    if (other.level <= node.level) {
+      rangeEnd = other.line;
+      break;
+    }
+  }
+
+  for (const action of doc.actions) {
+    if (action.line > node.line && action.line < rangeEnd) {
+      const actionPrompto = action.namespaces.prompto;
+      if (actionPrompto) {
+        items.push({
+          title: actionPrompto.title || "Action",
+          line: action.line,
+          isAction: true,
+          prompt: actionPrompto.prompt,
+          promptContent: actionPrompto.promptContent,
+          deliveryTarget: actionPrompto.deliveryTarget,
+          outputMode: actionPrompto.outputMode,
+        });
+      }
+    }
+  }
+
+  return items.length > 0 ? items : undefined;
 }

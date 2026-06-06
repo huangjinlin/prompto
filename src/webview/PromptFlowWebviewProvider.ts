@@ -8,6 +8,7 @@ import * as path from "path";
 import { extractFlowGraph, FlowGraph } from "../services/MarkdownFlowService";
 import {
   findPromptoMetaForHeading,
+  findPromptoMetaForAction,
   getDocumentLines,
   getHeadingText,
   getNodeBody,
@@ -58,6 +59,9 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
           break;
         case "runNode":
           await this._runNode(msg.line, msg.headingLine);
+          break;
+        case "runPrompto":
+          await this._runPromptoAtLine(msg.line, msg.headingLine);
           break;
       }
     });
@@ -144,6 +148,51 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
       ),
       workspaceFolder,
     });
+  }
+
+  private async _runPromptoAtLine(line: number, headingLine: number): Promise<void> {
+    if (!this._currentDocument) {
+      return;
+    }
+
+    const lines = getDocumentLines(this._currentDocument);
+    const workspaceFolder =
+      vscode.workspace.getWorkspaceFolder(this._currentDocument.uri) ??
+      vscode.workspace.workspaceFolders?.[0];
+
+    // 判断是节点级还是动作级：如果 line === headingLine，是主 prompto
+    if (line === headingLine) {
+      const prompto = findPromptoMetaForHeading(lines, headingLine);
+      if (!prompto) {
+        vscode.window.showErrorMessage("No prompt metadata found.");
+        return;
+      }
+      await this._executePrompt({
+        promptName: getHeadingText(lines, headingLine),
+        deliveryOptions: {
+          outputMode: parsePromptOutputMode(prompto.outputMode),
+          deliveryTarget: parsePromptDeliveryTarget(prompto.deliveryTarget),
+        },
+        selectedTextContext: buildSelectedTextContextFromPrompto(prompto, getNodeBody(lines, headingLine)),
+        workspaceFolder,
+      });
+    } else {
+      // action 级
+      const prompto = findPromptoMetaForAction(lines, line);
+      if (!prompto) {
+        vscode.window.showErrorMessage("No prompt metadata found for this action.");
+        return;
+      }
+      await this._executePrompt({
+        promptName: prompto.title || "Action",
+        deliveryOptions: {
+          outputMode: parsePromptOutputMode(prompto.outputMode),
+          deliveryTarget: parsePromptDeliveryTarget(prompto.deliveryTarget),
+        },
+        selectedTextContext: buildSelectedTextContextFromPrompto(prompto),
+        workspaceFolder,
+      });
+    }
   }
 
   private async _executePrompt(options: {
