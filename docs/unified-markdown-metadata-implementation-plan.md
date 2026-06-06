@@ -13,7 +13,7 @@
 
 推荐按四个阶段推进：
 
-1. 先冻结规范与兼容策略
+1. 先冻结规范
 2. 先升级 Prompto 的解析与归一化层
 3. 再升级 Markdown Outline Viewer 的解析与展示层
 4. 最后在稳定的解析层之上建设流程图与更强的创作体验
@@ -35,7 +35,6 @@
 - ✅ 确认标准宿主块名为 `md-meta`
 - ✅ 确认保留命名空间为 `prompto`、`flow`、`outline`
 - ✅ 确认保留根字段为 `version`、`scope`、`defaults`
-- ✅ 确认旧语法 `prompto`、`prompto-action`、`outline` 的归一化规则
 
 关键决策摘要：
 
@@ -43,10 +42,9 @@
 - 根级仅保留 `version`、`scope`、`defaults` 三个字段
 - 标准命名空间仅 `prompto`、`flow`、`outline`，后续走自定义命名空间规则
 - prompto 字段共 5 个：`prompt`、`promptContent`、`deliveryTarget`、`outputMode`、`title`
-- `prompt` 与 `promptContent` 不应同时出现；旧块若同时出现默认取 `promptContent`
+- `prompt` 与 `promptContent` 不应同时出现
 - flow 分支采用 YAML 数组对象，消费顺序先 `branches` 再 `next`
 - outline v1 仅冻结 `status`，推荐值可为空，未知值优雅降级
-- 旧 `prompto-action` 保持现有功能不变，不增加 `outputMode` 和 `deliveryTarget`
 
 完成标准：
 
@@ -61,10 +59,9 @@
 行动项：
 
 - ✅ 建立一组共享 Markdown 样例，覆盖 document、node、action 三种作用域
-- ✅ 加入旧语法样例与混合语法样例
 - ✅ 为每个样例定义期望的归一化 JSON 输出
 
-样例清单（共 17 个）：
+样例清单（共 14 个）：
 
 - 01-document-scope：文档级 `md-meta`
 - 02-node-scope：节点级 `md-meta`
@@ -74,15 +71,12 @@
 - 06-defaults-override：局部覆盖默认值
 - 07-defaults-null-clear：null 清除继承值
 - 08-flow-branches：flow 决策分支
-- 09-legacy-prompto：旧 `prompto` 块
-- 10-legacy-prompto-action：旧 `prompto-action` 块
-- 11-legacy-outline：旧 `outline` 块
-- 12-mixed-new-and-legacy：新旧语法混合
-- 13-unknown-namespace：未知命名空间
+- 09-unknown-namespace：未知命名空间
+- 10-prompto-conflict-resolve：prompt/promptContent 冲突处理
+- 11-flow-with-next-and-branches：branches 与 next 并存
+- 12-outline-empty-status：outline status 为空
+- 13-outline-unknown-status：outline status 为未知值
 - 14-prompto-conflict-resolve：prompt/promptContent 冲突处理
-- 15-flow-with-next-and-branches：branches 与 next 并存
-- 16-outline-empty-status：outline status 为空
-- 17-outline-unknown-status：outline status 为未知值
 
 关键约定：
 
@@ -132,15 +126,13 @@
 
 当前相关文件：
 
-- `src/services/MarkdownPromptBlockService.ts`
 - `src/extension.ts`
 
 行动项：
 
-- ✅ 新增独立的元信息解析服务，不继续在 prompt block service 中堆平铺正则解析
+- ✅ 新增独立的元信息解析服务
 - ✅ 定义文档、节点、动作三种作用域的归一化模型
-- ✅ 在过渡期同时支持 `md-meta` 与旧 `prompto`、`prompto-action`
-- ✅ 保持现有文档行为不变
+- ✅ 仅支持 `md-meta` 宿主块
 
 实际新增文件：
 
@@ -151,14 +143,12 @@
 关键实现：
 
 - 文档作用域检测：H1 后紧跟的首个 meta 块视为文档级
-- 旧语法多行字符串自动去除公共缩进
 - 自定义命名空间统一放入 `custom` 字典
-- 17 个共享样例全部通过验证
+- 共享样例全部通过验证
 
 完成标准：
 
-- ✅ Prompto 能同时读取 `md-meta` 与旧 `prompto`、`prompto-action`
-- ✅ 现有 CodeLens 功能在旧文档上不回退（未改动现有文件）
+- ✅ Prompto 仅通过 `md-meta` 读取元信息
 - ✅ 新文档可以把 `prompto` 数据写到命名空间结构里
 
 ### 4.2 阶段 P2：升级执行管线到命名空间模型
@@ -186,16 +176,14 @@
 
 关键实现：
 
-- 采用"旧路径优先，新路径兜底"策略
-- 旧路径：现有 `MarkdownPromptBlockService` 逻辑不变
-- 新路径：桥接服务按行号从 `MarkdownMetaDocument` 查找 `prompto` 命名空间
-- 两条路径最终汇入同一个 `showPromptPicker` → `deliverPromptContent` 执行链路
+- 桥接服务按行号从 `MarkdownMetaDocument` 查找 `prompto` 命名空间
+- 最终汇入 `showPromptPicker` → `deliverPromptContent` 执行链路
 - 全项目 TypeScript 编译通过，零错误
 
 完成标准：
 
 - ✅ 用户视角下的 prompt 执行行为不变
-- ✅ 新语法与旧语法都会汇入同一条执行链路
+- ✅ md-meta 语法汇入统一执行链路
 
 ### 4.3 阶段 P3：升级创作辅助能力
 
@@ -261,7 +249,6 @@
 - 侧边栏 WebviewView，与编辑器并排查看
 - 纯 SVG 手写布局（拓扑排序分层），无第三方依赖
 - 节点点击触发 `locateNode` 消息，定位到文档对应行
-- 支持新旧两条 prompt 执行路径
 - 自动监听编辑器切换和文档变化，实时刷新流程图
 - 全项目 TypeScript 编译通过
 
@@ -277,17 +264,17 @@
 行动项：
 
 - ✅ 提供使用 `md-meta` 的示例文档
-- ✅ 增补从 `prompto`、`prompto-action` 迁移的文档说明
-- 回归测试已通过共享样例集覆盖（17 个样例全部通过）
+- ✅ 提供 md-meta 语法的完整文档说明
+- 回归测试已通过共享样例集覆盖
 
 实际交付：
 
 - `example-md-meta.md`：完整的 md-meta 示例文档（使用每日操作场景）
-- `docs/migration-guide.md`：迁移指南，包含旧语法到新语法的对照表、新增能力说明、迁移建议
+- `docs/migration-guide.md`：迁移指南，说明旧语法已移除
 
 完成标准：
 
-- ✅ 用户可以渐进迁移，不必一次性改完全部历史文档
+- ✅ 项目仅支持 `md-meta` 语法
 
 ## 5. Markdown Outline Viewer 实施计划
 
@@ -332,7 +319,6 @@
 
 - 在标题解析之外，新增 `md-meta` 解析
 - 将归一化后的元信息挂载到每个标题项上
-- 将旧 `outline` 注释块归一化到 `outline` 命名空间
 - 如有必要，输出文档级默认值
 
 建议扩展的解析结果：
@@ -369,28 +355,26 @@
 
 - 大纲状态来自统一元信息，而不是继续依赖单独的临时语法
 
-### 5.4 阶段 O3：兼容与诊断
+### 5.4 阶段 O3：诊断
 
 行动项：
 
-- 继续兼容旧 `<!-- outline -->` 语法
 - 对同一标题绑定多个宿主块给出警告
 - 对错误放置位置与错误格式给出诊断
 
 完成标准：
 
-- 旧文档仍能正常展示
 - 新语法拥有更完整的校验反馈
 
 ## 6. 推荐执行顺序
 
 1. 冻结规范与共享样例
-2. 在 Prompto 中实现 `md-meta` 解析与旧语法归一化
-3. 在 Markdown Outline Viewer 中实现 `md-meta` 解析与旧语法归一化
+2. 在 Prompto 中实现 `md-meta` 解析
+3. 在 Markdown Outline Viewer 中实现 `md-meta` 解析
 4. 回到 Prompto，补齐创作辅助与诊断
 5. 在 Prompto 中建设 Flow 提取服务
 6. 在 Prompto 中建设 Flow Webview 与节点执行交互
-7. 补充迁移文档、示例文档与回归验证
+7. 补充文档与回归验证
 
 这个顺序的核心是先稳定数据契约，再建设图形交互。
 
@@ -404,14 +388,13 @@
 
 ### 里程碑 B：双解析器稳定
 
-- Prompto 能解析 `md-meta` 与旧 prompt 语法
-- Markdown Outline Viewer 能解析 `md-meta` 与旧 outline 语法
+- Prompto 能解析 `md-meta`
+- Markdown Outline Viewer 能解析 `md-meta`
 - 两边面对同一份样例文档得到等价结果
 
 ### 里程碑 C：创作体验稳定
 
 - Prompto 补全与诊断支持新语法
-- 示例与迁移说明可用
 
 ### 里程碑 D：Flow 体验交付
 
@@ -423,7 +406,6 @@
 | 风险 | 影响 | 缓解方式 |
 | --- | --- | --- |
 | TypeScript 与 Python 解析结果漂移 | 高 | 建立共享样例与归一化输出断言 |
-| 旧语法长期成为默认入口，导致新规范失效 | 中 | 继续兼容旧语法，但文档、补全、示例一律转向 `md-meta` |
 | Markdown Outline Viewer 继续从编译产物直接演进 | 高 | 把恢复 `src/` 与 `tsconfig.json` 作为 O0 前置条件 |
 | 在解析层稳定之前就先做流程图 UI | 高 | 明确把流程图交互放到 P5，而不是 P1 |
 
@@ -431,7 +413,7 @@
 
 如果要先做一条最小但有价值的交付，建议顺序如下：
 
-1. 在 Prompto 中加入 `md-meta` 解析与旧语法归一化
+1. 在 Prompto 中加入 `md-meta` 解析
 2. 在 Prompto 中更新补全与文档
 3. 在 Markdown Outline Viewer 中加入 `md-meta` 解析与 `outline.status` 展示
 

@@ -18,7 +18,6 @@
 - 允许多个扩展从同一个元信息块中读取不同功能域的数据
 - 避免随着功能增长而出现平铺字段冲突
 - 支持文档级默认值与局部覆盖
-- 支持从现有旧语法逐步迁移，而不是一次性推翻
 
 本规范不定义具体 UI 细节，只定义文档层面的契约。图形界面、执行逻辑、资源管理器展示都应建立在这份契约之上。
 
@@ -29,7 +28,6 @@
 3. 未知命名空间和未知字段不得导致整块解析失败。
 4. 根级字段必须极少且保留。
 5. 语法必须同时便于 TypeScript 与 Python 实现。
-6. 语法必须支持逐步迁移，而不是要求用户一次性重写文档。
 
 ## 4. 术语
 
@@ -56,8 +54,6 @@ version: 1
 - 起始行去除前后空白后，必须是 `<!-- md-meta`
 - 结束行去除前后空白后，必须是 `-->`
 - 中间内容按本规范定义的 YAML 子集解析
-- 新文档应优先使用 `md-meta`
-- 为兼容旧文档，实现层可以支持别名，但别名不是推荐创作语法
 
 ## 6. 作用域与放置位置
 
@@ -286,7 +282,6 @@ outline:
 规则如下：
 
 - `prompt` 与 `promptContent` 不应在同一作用域同时出现
-- 旧 `prompto` 块中若同时出现两者，实现层默认取 `promptContent`
 - `title` 推荐用于动作作用域，在标题节点作用域中可被忽略
 
 示例：
@@ -384,70 +379,12 @@ outline:
 - 内容是否符合支持的 YAML 子集
 - `version` 是否存在且受支持
 - 同一锚点是否定义了多个相互竞争的宿主块
-- `prompto.prompt` 与 `prompto.promptContent` 是否同时存在（旧块默认取 `promptContent`，新 `md-meta` 块应报诊断警告）
+- `prompto.prompt` 与 `prompto.promptContent` 是否同时存在（应报诊断警告）
 - 在具备全文件视图时，`flow.entry`、`flow.next`、`flow.branches[*].to` 是否能解析到合法节点
 
 当环境允许时，校验失败应尽量以诊断形式呈现给用户。
 
-## 13. 旧语法兼容
-
-实现层可以支持旧语法，并在内部归一化到 v1 模型。
-
-### 13.1 旧 `prompto`
-
-```md
-<!-- prompto
-prompt: review/code-review
-deliveryTarget: githubCopilotChat
--->
-```
-
-归一化结果：
-
-```yaml
-prompto:
-  prompt: review/code-review
-  deliveryTarget: githubCopilotChat
-```
-
-### 13.2 旧 `prompto-action`
-
-```md
-<!-- prompto-action
-title: Summarize This Section
-promptContent: |
-  Summarize the section
--->
-```
-
-归一化结果：
-
-```yaml
-scope: action
-prompto:
-  title: Summarize This Section
-  promptContent: |
-    Summarize the section
-```
-
-旧 `prompto-action` 保持现有功能不变，v1 不为其增加 `outputMode` 和 `deliveryTarget` 支持。
-
-```md
-<!-- outline
-status: done
--->
-```
-
-归一化结果：
-
-```yaml
-outline:
-  status: done
-```
-
-旧语法只应视为兼容输入，不应继续承担新功能扩展。新能力应优先挂载在 `md-meta` 下。
-
-## 14. 完整示例
+## 13. 完整示例
 
 ```md
 # 每日操作
@@ -533,15 +470,14 @@ outline:
 流程完成。
 ```
 
-## 15. 编写建议
+## 14. 编写建议
 
 1. 同一个锚点只放一个 `md-meta` 宿主块。
 2. 新能力只放在命名空间下，不新增根级业务字段。
 3. 节点一旦被 flow 引用，就保持 `flow.id` 稳定。
 4. 对共享配置优先使用文档级 `defaults`。
-5. 保留旧语法兼容，但新的补充字段不要继续堆在旧块里。
 
-## 16. 冻结记录
+## 15. 冻结记录
 
 - 冻结日期：2026-06-06
 - 规范版本：v1
@@ -550,10 +486,8 @@ outline:
 - 标准命名空间：`prompto`、`flow`、`outline`
 - 后续新增命名空间：走自定义命名空间规则（小写 kebab-case，消费方忽略不认识的）
 - prompto 字段：`prompt`、`promptContent`、`deliveryTarget`、`outputMode`、`title`
-- prompto 互斥规则：`prompt` 与 `promptContent` 不应同时出现；旧 `prompto` 块若同时出现两者，默认取 `promptContent`
+- prompto 互斥规则：`prompt` 与 `promptContent` 不应同时出现
 - flow 分支结构：采用 YAML 数组对象 `[{label, to}]`
 - flow 消费顺序：`branches` 优先于 `next`
 - outline v1 字段：仅 `status`，后续扩展走 v2
 - outline 推荐状态值：`todo`、`doing`、`done`、`blocked`、`cancelled`，可为空，未知值优雅降级
-- 旧 `prompto-action`：保持现有功能不变，v1 不增加 `outputMode` 和 `deliveryTarget`
-- 旧 `prompto` 冲突处理：`prompt` 与 `promptContent` 同时出现时默认取 `promptContent`
