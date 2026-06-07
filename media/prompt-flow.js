@@ -4,28 +4,42 @@
   const vscode = acquireVsCodeApi();
 
   // ── 状态 ──
-  let currentGraph = null;
-  let highlightedNodeId = null;
+  var currentGraphs = [];
+  var activeGraphId = null; // null = show all
+  var highlightedNodeId = null;
+  var hasSavedScale = (savedState && typeof savedState.scale === "number");
+  var isSwitchingGraph = false; // 下拉切换时保持 scale
 
   // ── 布局常量 ──
-  const NODE_WIDTH = 140;
-  const NODE_HEIGHT = 40;
-  const LAYER_GAP = 80;
-  const NODE_GAP = 30;
-  const PADDING = 20;
+  var NODE_WIDTH = 140;
+  var NODE_HEIGHT = 40;
+  var LAYER_GAP = 80;
+  var NODE_GAP = 30;
+  var PADDING = 20;
+  var GRAPH_GAP = 60; // 多图之间的间距
 
-  // ── 变换状态 ──
-  let scale = 1;
-  let translateX = 0;
-  let translateY = 0;
-  let isDragging = false;
-  let dragStartX = 0;
-  let dragStartY = 0;
-  let dragStartTX = 0;
-  let dragStartTY = 0;
+  // ── 变换状态（单个 viewport 内） ──
+  var scale = 1;
+  var translateX = 0;
+  var translateY = 0;
+  var isDragging = false;
+  var dragStartX = 0;
+  var dragStartY = 0;
+  var dragStartTX = 0;
+  var dragStartTY = 0;
 
-  let graphWidth = 0;
-  let graphHeight = 0;
+  var totalWidth = 0;
+  var totalHeight = 0;
+
+  // ── 恢复持久化状态 ──
+  var savedState = vscode.getState();
+  if (savedState && typeof savedState.scale === "number") {
+    scale = savedState.scale;
+  }
+
+  function saveState() {
+    vscode.setState({ scale: scale });
+  }
 
   // ── 初始化 ──
   function init() {
@@ -34,9 +48,15 @@
   }
 
   function handleMessage(event) {
-    const msg = event.data;
+    var msg = event.data;
     if (msg.type === "updateFlow") {
-      currentGraph = msg.graph;
+      currentGraphs = msg.graphs || [];
+      // 如果只有一个图，自动选中；否则默认全部
+      if (currentGraphs.length === 1) {
+        activeGraphId = currentGraphs[0].id || null;
+      } else if (currentGraphs.length > 1 && activeGraphId === null) {
+        // 保持当前选择，如果有的话
+      }
       render();
     } else if (msg.type === "highlightNode") {
       highlightedNodeId = msg.nodeId;
@@ -44,27 +64,53 @@
     }
   }
 
+  // ── 获取当前要渲染的图列表 ──
+  function getVisibleGraphs() {
+    if (!currentGraphs || currentGraphs.length === 0) return [];
+    if (activeGraphId === null) return currentGraphs;
+    for (var i = 0; i < currentGraphs.length; i++) {
+      if (currentGraphs[i].id === activeGraphId) return [currentGraphs[i]];
+    }
+    return currentGraphs;
+  }
+
   // ── 渲染 ──
   function render() {
-    const container = document.getElementById("flow-container");
-    if (!currentGraph || !currentGraph.nodes || currentGraph.nodes.length === 0) {
+    var container = document.getElementById("flow-container");
+    if (!currentGraphs || currentGraphs.length === 0) {
       container.innerHTML =
         '<div class="empty-state"><div class="icon">⊞</div><div>No flow nodes found</div><div style="font-size:11px">Add flow metadata to your markdown headings</div></div>';
       return;
     }
 
-    const layout = computeLayout(currentGraph);
-    graphWidth = layout.width + PADDING * 2;
-    graphHeight = layout.height + PADDING * 2;
-
-    let html = "";
+    var visible = getVisibleGraphs();
+    var html = "";
 
     // 标题栏
     html += '<div class="flow-header">';
-    html += '<span class="title">' + escapeHtml(currentGraph.title || "Flow Graph") + "</span>";
+    html += '<div class="header-left">';
+
+    // 下拉选择器（多图时显示）
+    if (currentGraphs.length > 1) {
+      html += '<select id="flow-select" class="flow-select">';
+      html += '<option value="__all__"' + (activeGraphId === null ? " selected" : "") + '>全部流程</option>';
+      for (var gi = 0; gi < currentGraphs.length; gi++) {
+        var g = currentGraphs[gi];
+        var sel = (g.id === activeGraphId) ? " selected" : "";
+        var nodeCount = g.nodes ? g.nodes.length : 0;
+        html += '<option value="' + escapeHtml(g.id || "") + '"' + sel + '>' +
+          escapeHtml(g.title || g.id || "Flow") + ' (' + nodeCount + ')</option>';
+      }
+      html += '</select>';
+    } else {
+      html += '<span class="title">' + escapeHtml(visible[0].title || "Flow Graph") + "</span>";
+    }
+
+    html += '</div>';
     html += '<div class="actions">';
     html += '<button id="btn-fit">Fit</button>';
     html += '<button id="btn-zin">+</button>';
+    html += '<span id="zoom-level" class="zoom-level">' + Math.round(scale * 100) + '%</span>';
     html += '<button id="btn-zout">−</button>';
     html += "</div></div>";
 
@@ -75,31 +121,73 @@
     html += '<svg class="flow-svg" xmlns="http://www.w3.org/2000/svg">';
     html += '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--flow-edge)"/></marker></defs>';
 
-    // <g> 包裹内容
     html += '<g id="flow-content">';
 
-    for (const edge of layout.edges) {
-      html += renderEdge(edge);
+    // 计算总布局
+    var yOffset = 0;
+    var maxW = 0;
+    var allRendered = [];
+
+    for (var vi = 0; vi < visible.length; vi++) {
+      var graph = visible[vi];
+      if (!graph.nodes || graph.nodes.length === 0) continue;
+
+      var layout = computeLayout(graph);
+
+      // 多图时显示子标题
+      if (visible.length > 1) {
+        var titleInvScale = scale > 0 ? (1 / Math.sqrt(scale)) : 1;
+        var titleTx = PADDING;
+        var titleTy = yOffset + PADDING + 14;
+        html += '<text class="flow-graph-title" transform="translate(' + titleTx + ',' + titleTy + ') scale(' + titleInvScale + ')">​' +
+          escapeHtml(graph.title || graph.id || "Flow") + '</text>';
+        yOffset += 30;
+      }
+
+      // 渲染此图的节点和边（带 yOffset 偏移）
+      var gWidth = layout.width + PADDING * 2;
+      var gHeight = layout.height + PADDING * 2;
+
+      html += '<g class="flow-subgraph" data-graph-id="' + escapeHtml(graph.id || "") + '" transform="translate(0,' + yOffset + ')">';
+
+      for (var ei = 0; ei < layout.edges.length; ei++) {
+        html += renderEdge(layout.edges[ei]);
+      }
+      for (var ni = 0; ni < layout.nodes.length; ni++) {
+        html += renderNode(layout.nodes[ni]);
+      }
+
+      html += '</g>';
+
+      yOffset += gHeight;
+      maxW = Math.max(maxW, gWidth);
+
+      // 图之间加间距
+      if (vi < visible.length - 1) {
+        yOffset += GRAPH_GAP;
+      }
     }
-    for (const node of layout.nodes) {
-      html += renderNode(node);
-    }
+
+    totalWidth = maxW;
+    totalHeight = yOffset;
 
     html += "</g></svg></div>";
 
     // 诊断
-    if (currentGraph.diagnostics && currentGraph.diagnostics.length > 0) {
-      html += '<div class="flow-diagnostics">';
-      for (const d of currentGraph.diagnostics) {
-        html += '<div class="diagnostic">' + escapeHtml(d.message) + "</div>";
+    for (var di = 0; di < visible.length; di++) {
+      var dg = visible[di];
+      if (dg.diagnostics && dg.diagnostics.length > 0) {
+        html += '<div class="flow-diagnostics">';
+        for (var ddi = 0; ddi < dg.diagnostics.length; ddi++) {
+          html += '<div class="diagnostic">' + escapeHtml(dg.diagnostics[ddi].message) + "</div>";
+        }
+        html += "</div>";
       }
-      html += "</div>";
     }
 
     container.innerHTML = html;
     updateHighlight();
 
-    // 绑定事件（必须在 innerHTML 之后用 addEventListener，CSP 禁止 onclick）
     bindButtons();
     resetTransform();
     setupInteractions();
@@ -113,13 +201,40 @@
     if (btnZin) btnZin.addEventListener("click", zoomIn);
     if (btnZout) btnZout.addEventListener("click", zoomOut);
 
+    // 下拉选择
+    var select = document.getElementById("flow-select");
+    if (select) {
+      select.addEventListener("change", function () {
+        var val = select.value;
+        activeGraphId = (val === "__all__") ? null : val;
+        isSwitchingGraph = true;
+        render();
+      });
+    }
+
     // 节点左键：定位
     // 节点右键：上下文菜单
     var viewport = document.getElementById("flow-viewport");
     if (viewport) {
       viewport.addEventListener("click", function (e) {
+        // 小圆点点击：弹出上下文菜单（优先判断，不受拖拽影响）
+        if (e.target.classList.contains("prompto-indicator")) {
+          var nodeEl = e.target.closest(".flow-node");
+          if (nodeEl) {
+            var nodeId = nodeEl.dataset.id;
+            var nodeData = findNodeById(nodeId);
+            if (nodeData && nodeData.promptoItems && nodeData.promptoItems.length > 0) {
+              showContextMenu(e.clientX, e.clientY, nodeData);
+            }
+          }
+          e.stopPropagation();
+          return;
+        }
+        // 拖拽后不触发节点定位
+        if (isDragging) return;
+        // 节点点击：定位
         var nodeEl = e.target.closest(".flow-node");
-        if (nodeEl && !isDragging) {
+        if (nodeEl) {
           var line = parseInt(nodeEl.dataset.line, 10);
           vscode.postMessage({ type: "locateNode", line: line });
         }
@@ -138,7 +253,6 @@
       });
     }
 
-    // 点击空白处关闭菜单
     document.addEventListener("click", function () {
       hideContextMenu();
     });
@@ -147,9 +261,12 @@
   // ── 右键上下文菜单 ──
 
   function findNodeById(nodeId) {
-    if (!currentGraph || !currentGraph.nodes) return null;
-    for (var i = 0; i < currentGraph.nodes.length; i++) {
-      if (currentGraph.nodes[i].id === nodeId) return currentGraph.nodes[i];
+    for (var gi = 0; gi < currentGraphs.length; gi++) {
+      var nodes = currentGraphs[gi].nodes;
+      if (!nodes) continue;
+      for (var ni = 0; ni < nodes.length; ni++) {
+        if (nodes[ni].id === nodeId) return nodes[ni];
+      }
     }
     return null;
   }
@@ -171,7 +288,6 @@
     for (var j = 0; j < nodeData.promptoItems.length; j++) {
       var item = nodeData.promptoItems[j];
 
-      // 如果同时有主 prompto 和 action，加分隔线
       if (hasMain && hasAction && j > 0 && item.isAction && !menu.querySelector(".flow-context-separator")) {
         var sep = document.createElement("div");
         sep.className = "flow-context-separator";
@@ -180,9 +296,7 @@
 
       var el = document.createElement("div");
       el.className = "flow-context-item";
-      if (item.isAction) {
-        el.className += " action-item";
-      }
+      if (item.isAction) el.className += " action-item";
       el.textContent = item.title;
       el.dataset.line = item.line;
       el.dataset.headingLine = nodeData.line;
@@ -202,19 +316,17 @@
       menu.appendChild(el);
     }
 
-    // 定位：用 clientX/Y，考虑 viewport 滚动偏移
     var viewport = document.getElementById("flow-viewport");
     var vpRect = viewport ? viewport.getBoundingClientRect() : { left: 0, top: 0 };
     menu.style.left = (clientX - vpRect.left) + "px";
     menu.style.top = (clientY - vpRect.top) + "px";
 
-    var container = viewport || document.body;
-    container.appendChild(menu);
+    var parent = viewport || document.body;
+    parent.appendChild(menu);
 
-    // 防止菜单超出边界
     requestAnimationFrame(function () {
       var menuRect = menu.getBoundingClientRect();
-      var parentRect = container.getBoundingClientRect();
+      var parentRect = parent.getBoundingClientRect();
       if (menuRect.right > parentRect.right) {
         menu.style.left = Math.max(0, (clientX - vpRect.left) - menuRect.width) + "px";
       }
@@ -237,23 +349,50 @@
       g.setAttribute("transform",
         "translate(" + translateX + "," + translateY + ") scale(" + scale + ")");
     }
+    updateZoomDisplay();
+    saveState();
+  }
+
+  function updateZoomDisplay() {
+    var el = document.getElementById("zoom-level");
+    if (el) el.textContent = Math.round(scale * 100) + "%";
   }
 
   function resetTransform() {
     var viewport = document.getElementById("flow-viewport");
-    if (!viewport || graphWidth === 0) return;
+    if (!viewport || totalWidth === 0) return;
 
     var vw = viewport.clientWidth;
     var vh = viewport.clientHeight;
     if (vw === 0 || vh === 0) return;
 
     var pad = 10;
-    var sx = (vw - pad * 2) / graphWidth;
-    var sy = (vh - pad * 2) / graphHeight;
+
+    if (isSwitchingGraph) {
+      // 下拉切换：保持当前 scale，只重新居中
+      isSwitchingGraph = false;
+      translateX = (vw - totalWidth * scale) / 2;
+      translateY = (vh - totalHeight * scale) / 2;
+      applyTransform();
+      return;
+    }
+
+    if (hasSavedScale) {
+      // 首次加载有持久化值：用持久化 scale 居中
+      hasSavedScale = false;
+      translateX = (vw - totalWidth * scale) / 2;
+      translateY = (vh - totalHeight * scale) / 2;
+      applyTransform();
+      return;
+    }
+
+    // Fit 模式或首次加载无持久化值
+    var sx = (vw - pad * 2) / totalWidth;
+    var sy = (vh - pad * 2) / totalHeight;
     scale = Math.min(sx, sy, 1);
 
-    translateX = (vw - graphWidth * scale) / 2;
-    translateY = (vh - graphHeight * scale) / 2;
+    translateX = (vw - totalWidth * scale) / 2;
+    translateY = (vh - totalHeight * scale) / 2;
 
     applyTransform();
   }
@@ -262,7 +401,6 @@
     var viewport = document.getElementById("flow-viewport");
     if (!viewport) return;
 
-    // 滚轮 / 触摸板缩放
     viewport.addEventListener("wheel", function (e) {
       e.preventDefault();
       var rect = viewport.getBoundingClientRect();
@@ -276,7 +414,6 @@
       applyTransform();
     }, { passive: false });
 
-    // 拖拽平移
     viewport.addEventListener("mousedown", function (e) {
       if (e.button !== 0) return;
       isDragging = false;
@@ -303,7 +440,6 @@
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         viewport.style.cursor = "grab";
-        // isDragging 在 click 事件中检查后重置
         setTimeout(function () { isDragging = false; }, 0);
       }
 
@@ -337,8 +473,15 @@
     var label = node.title;
     if (label.length > 10) label = label.substring(0, 9) + "…";
 
+    // 反缩放文字，保持视觉大小恒定
+    var invScale = scale > 0 ? (1 / Math.sqrt(scale)) : 1;
+    var labelTransform = 'transform="translate(' + cx + ',' + cy + ') scale(' + invScale + ')"';
+
+    var hasPrompts = node.promptoItems && node.promptoItems.length > 0;
+    var indicator = hasPrompts ? '<circle class="prompto-indicator" cx="' + (x + w - 6) + '" cy="' + (y + 6) + '" r="4" fill="#f0ad4e"/>' : '';
+
     return '<g class="' + cls + '" data-id="' + node.id + '" data-line="' + node.line + '">' +
-      shape + '<text class="label" x="' + cx + '" y="' + cy + '">' + escapeHtml(label) + "</text></g>";
+      shape + indicator + '<text class="label" ' + labelTransform + '>​' + escapeHtml(label) + "</text></g>";
   }
 
   function renderEdge(edge) {
@@ -346,13 +489,68 @@
     var sy = edge.sy + PADDING;
     var ex = edge.ex + PADDING;
     var ey = edge.ey + PADDING;
-    var midY = (sy + ey) / 2;
-    var d = "M " + sx + " " + sy + " C " + sx + " " + midY + " " + ex + " " + midY + " " + ex + " " + ey;
 
-    var html = '<path class="flow-edge" d="' + d + '"/>';
+    // 竖直向下分支保持在主轴线上，避免被 lane 偏移挪到左侧
+    var isVerticalDownBranch =
+      typeof edge.branchIndex === "number" &&
+      typeof edge.branchCount === "number" &&
+      edge.branchCount > 1 &&
+      ey > sy &&
+      Math.abs(ex - sx) < 1;
+
+    var laneOffset = 0;
+    if (
+      typeof edge.branchIndex === "number" &&
+      typeof edge.branchCount === "number" &&
+      edge.branchCount > 1 &&
+      !isVerticalDownBranch
+    ) {
+      laneOffset = (edge.branchIndex - (edge.branchCount - 1) / 2) * 28;
+    }
+    sx += laneOffset;
+    ex += laneOffset;
+
+    var html = "";
+    var labelX = 0;
+    var labelY = 0;
+
+    // 分支线优化：右侧分支仅在“跨层分支”时使用右侧引出，避免影响兄弟分支
+    var isCrossLayerBranch = (ey - sy) > (NODE_HEIGHT + LAYER_GAP + 20);
+    var useRightOrthogonal =
+      typeof edge.branchIndex === "number" &&
+      typeof edge.branchCount === "number" &&
+      edge.branchCount > 1 &&
+      edge.branchIndex > (edge.branchCount - 1) / 2 &&
+      isCrossLayerBranch;
+
+    if (useRightOrthogonal) {
+      var startX = sx + NODE_WIDTH / 2;
+      var startY = sy - NODE_HEIGHT / 2;
+      var bendX = Math.max(startX + 34, ex + 26);
+      var entryY = ey - 6;
+      // 圆角折线：使用两段贝塞尔过渡，视觉更柔和
+      var topY = startY + 18;
+      var bottomY = entryY - 18;
+      var d1 = "M " + startX + " " + startY +
+        " C " + (startX + 16) + " " + startY + " " + bendX + " " + startY + " " + bendX + " " + topY +
+        " L " + bendX + " " + bottomY +
+        " C " + bendX + " " + entryY + " " + (ex + 14) + " " + entryY + " " + ex + " " + ey;
+
+      html += '<path class="flow-edge" d="' + d1 + '"/>';
+      labelX = bendX - 10;
+      labelY = startY - 10;
+    } else {
+      var midY = (sy + ey) / 2;
+      var d = "M " + sx + " " + sy + " C " + sx + " " + midY + " " + ex + " " + midY + " " + ex + " " + ey;
+      html += '<path class="flow-edge" d="' + d + '"/>';
+      labelX = (sx + ex) / 2;
+      labelY = midY - 6;
+    }
+
     if (edge.label) {
-      var mx = (sx + ex) / 2;
-      html += '<text class="flow-edge-label" x="' + mx + '" y="' + (midY - 6) + '">' + escapeHtml(edge.label) + "</text>";
+      var invScale = scale > 0 ? (1 / Math.sqrt(scale)) : 1;
+      var edgeLabelTransform = 'transform="translate(' + labelX + ',' + labelY + ') scale(' + invScale + ')"';
+      html += '<text class="flow-edge-label" ' + edgeLabelTransform + '>​' + escapeHtml(edge.label) + "</text>";
     }
     return html;
   }
@@ -448,6 +646,7 @@
           title: nodes[n].title,
           kind: nodes[n].kind,
           line: nodes[n].line,
+          promptoItems: nodes[n].promptoItems,
           x: nodePositions[nodes[n].id].x + offsetX,
           y: nodePositions[nodes[n].id].y,
         });
@@ -460,6 +659,8 @@
       if (nodePositions[ed.from] && nodePositions[ed.to]) {
         layoutEdges.push({
           label: ed.label,
+          branchIndex: ed.branchIndex,
+          branchCount: ed.branchCount,
           sx: nodePositions[ed.from].x + offsetX + NODE_WIDTH / 2,
           sy: nodePositions[ed.from].y + NODE_HEIGHT,
           ex: nodePositions[ed.to].x + offsetX + NODE_WIDTH / 2,
@@ -504,9 +705,7 @@
 
   // ── 按钮动作 ──
 
-  function fitView() {
-    resetTransform();
-  }
+  function fitView() { resetTransform(); }
 
   function zoomIn() {
     var viewport = document.getElementById("flow-viewport");

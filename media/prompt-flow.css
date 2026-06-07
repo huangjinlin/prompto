@@ -70,6 +70,13 @@ html {
   flex-shrink: 0;
 }
 
+.flow-header .header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
 .flow-header .title {
   font-weight: 600;
   font-size: 13px;
@@ -92,6 +99,55 @@ html {
 
 .flow-header .actions button:hover {
   background: var(--flow-node-hover);
+}
+
+.zoom-level {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
+}
+
+/* ── 流程选择下拉 ── */
+
+.flow-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  cursor: pointer;
+  outline: none;
+}
+
+.flow-select:focus {
+  border-color: var(--flow-accent);
+}
+
+/* ── 多图子标题 ── */
+
+.flow-graph-title {
+  fill: var(--flow-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ── prompto 指示点 ── */
+
+.prompto-indicator {
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.prompto-indicator:hover {
+  opacity: 1;
+  filter: brightness(1.3);
 }
 
 /* ── 视口容器：固定大小，不随侧边栏缩放 ── */

@@ -280,6 +280,8 @@
 
 ### 5.1 阶段 O0：先恢复可维护源码结构
 
+状态：✅ 已完成（2026-06-07）
+
 当前相关文件：
 
 - `out/extension.js`
@@ -294,22 +296,31 @@
 
 行动项：
 
-- 在大改行为之前，先恢复或重建 `src/` 目录
-- 明确 `out/` 只作为构建产物，不再作为主要维护入口
-- 补齐 `tsconfig.json`，恢复可编译基线
+- ✅ 从编译产物反向工程 TypeScript 源码
+- ✅ 明确 `out/` 只作为构建产物，不再作为主要维护入口
+- ✅ 补齐 `tsconfig.json`，恢复可编译基线
 
-建议新增文件：
+实际新增文件：
 
-- `src/extension.ts`
-- `src/extensionAPI.ts`
-- `src/markdownOutlineWebview.ts`
-- `tsconfig.json`
+- `tsconfig.json`：TypeScript 编译配置
+- `src/extension.ts`：扩展入口，注册 Webview Provider、事件监听、命令
+- `src/extensionAPI.ts`：对外暴露 API（getCurrentOutline、jumpToLine、highlightLine、refresh）
+- `src/markdownOutlineWebview.ts`：Webview 视图提供者，调用 Python 解析器
+- `src/pythonBridge.ts`：Python 调用桥接模块（从 webview provider 中抽离）
+
+关键实现：
+
+- 从 `out/*.js` 反向工程为 `src/*.ts`，保留所有现有功能逻辑
+- Python 桥接逻辑抽离到独立模块，方便 O1 扩展
+- TypeScript 编译通过，产物包含 JS + sourcemap
 
 完成标准：
 
-- 后续元信息改造都发生在源码层，而不是直接改生成文件
+- ✅ 后续元信息改造都发生在源码层，而不是直接改生成文件
 
 ### 5.2 阶段 O1：扩展 Python 解析器支持统一元信息
+
+状态：✅ 已完成（2026-06-07）
 
 当前相关文件：
 
@@ -317,43 +328,62 @@
 
 行动项：
 
-- 在标题解析之外，新增 `md-meta` 解析
-- 将归一化后的元信息挂载到每个标题项上
-- 如有必要，输出文档级默认值
+- ✅ 在标题解析之外，新增 `md-meta` 解析
+- ✅ 将归一化后的元信息挂载到每个标题项上
+- ✅ 输出文档级默认值
 
-建议扩展的解析结果：
+实际新增文件：
 
-- `flat_outline[*].metadata`
-- `document_metadata`
+- `python/yaml_subset_parser.py`：受限 YAML 子集解析器（与 TS 版对齐）
+- `python/markdown_meta_parser.py`：md-meta 块识别与归一化
 
-关键原则：
+实际修改文件：
 
-- 大纲项目只消费 `outline` 命名空间，不要在展示逻辑里耦合 `prompto` 和 `flow`
+- `python/markdown_parser.py`：`OutlineItem` 新增 `metadata` 字段，`parse_content` 集成元信息解析
+
+关键实现：
+
+- `OutlineItem` 新增 `metadata: Optional[Dict]` 字段，不影响现有大纲树构建
+- 解析器输出新增 `document_metadata`（含 defaults）和 `flat_outline[*].metadata`（含 outline.status）
+- 节点未定义 status 时自动继承文档级 defaults 中的 outline.status
+- 大纲项目只消费 `outline` 命名空间，不耦合 `prompto` 和 `flow`
+- 共享样例 02-node-scope 和 05-defaults-inherit 验证通过
 
 完成标准：
 
-- 解析器能返回每个标题节点的生效 `outline.status`
+- ✅ 解析器能返回每个标题节点的生效 `outline.status`
 
 ### 5.3 阶段 O2：在大纲 UI 中消费状态
+
+状态：✅ 已完成（2026-06-07）
 
 当前相关文件：
 
 - `media/main.js`
+- `media/main.css`
 
 行动项：
 
-- 让 UI 读取 `outline.status`
-- 在标题旁展示状态徽标、颜色或图标
-- 对未知或缺失状态做优雅降级
+- ✅ 让 UI 读取 `outline.status`
+- ✅ 在标题旁展示状态徽标、颜色
+- ✅ 对未知或缺失状态做优雅降级
 
-可能同时涉及：
+实际改动：
 
-- `media/main.css`
-- 恢复后的 TypeScript Webview 源码
+- `media/main.js`：`renderOutlineItem` 增加状态徽标渲染，新增 `getStatusLabel` 函数（中文标签）
+- `media/main.css`：新增 `.status-badge` 和 5 种状态颜色样式
+
+关键实现：
+
+- 状态徽标显示在标题文本和行号之间
+- 5 种推荐状态：待办（灰）、进行中（蓝）、已完成（绿）、阻塞（浅灰）、已取消（深灰）
+- 未知状态直接显示原始字符串，不隐藏
+- 缺失 status 时不渲染徽标
+- 使用 `escapeHtml` 防止 XSS
 
 完成标准：
 
-- 大纲状态来自统一元信息，而不是继续依赖单独的临时语法
+- ✅ 大纲状态来自统一元信息，而不是继续依赖单独的临时语法
 
 ### 5.4 阶段 O3：诊断
 
@@ -418,3 +448,4 @@
 3. 在 Markdown Outline Viewer 中加入 `md-meta` 解析与 `outline.status` 展示
 
 在这个首切片完成之前，不建议先开工 Flow Webview。
+

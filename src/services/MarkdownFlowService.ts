@@ -33,6 +33,8 @@ export interface FlowEdge {
   from: string;
   to: string;
   label?: string;
+  branchIndex?: number;
+  branchCount?: number;
 }
 
 export interface FlowGraph {
@@ -57,6 +59,95 @@ export interface FlowDiagnostic {
 export function extractFlowGraph(lines: string[]): FlowGraph {
   const doc = parseMarkdownMetaDocument(lines);
   return buildFlowGraph(doc);
+}
+
+/**
+ * 提取多个流程图（按 H1 文档级 flow 分组）
+ * 每个拥有 flow.id 的 H1 节点视为一个独立流程图的根
+ */
+export function extractFlowGraphs(lines: string[]): FlowGraph[] {
+  const doc = parseMarkdownMetaDocument(lines);
+
+  // 收集所有 H1 级别的 flow 配置
+  // 包括：文档级（第一个 H1 的 md-meta 被解析为 document scope）+ 节点级 H1
+  type H1FlowEntry = { line: number; flow: FlowMeta; isDocScope: boolean };
+  const h1Flows: H1FlowEntry[] = [];
+
+  // 检查文档级 flow（第一个 H1 的情况）
+  const docFlow = doc.document.namespaces.flow;
+  if (docFlow?.id) {
+    // 找到第一个 H1 节点的行号
+    const HEADING_RE = /^(#{1})\s+/;
+    for (let i = 0; i < lines.length; i++) {
+      if (HEADING_RE.test(lines[i])) {
+        h1Flows.push({ line: i, flow: docFlow, isDocScope: true });
+        break;
+      }
+    }
+  }
+
+  // 检查节点级 H1
+  for (const node of doc.nodes) {
+    if (node.level === 1 && node.namespaces.flow?.id) {
+      h1Flows.push({ line: node.line, flow: node.namespaces.flow, isDocScope: false });
+    }
+  }
+
+  // 按行号排序去重（文档级和节点级可能指向同一个 H1）
+  h1Flows.sort((a, b) => a.line - b.line);
+  const unique: H1FlowEntry[] = [];
+  for (const entry of h1Flows) {
+    if (unique.length === 0 || unique[unique.length - 1].line !== entry.line) {
+      unique.push(entry);
+    }
+  }
+
+  if (unique.length === 0) {
+    return [buildFlowGraph(doc)];
+  }
+
+  const graphs: FlowGraph[] = [];
+
+  for (let i = 0; i < unique.length; i++) {
+    const h1 = unique[i];
+    const nextH1Line = i + 1 < unique.length ? unique[i + 1].line : Infinity;
+
+    // 收集此 H1 区间内的子节点（排除 H1 自身）
+    const subNodes = doc.nodes.filter(
+      (n) => n.line > h1.line && n.line < nextH1Line
+    );
+
+    // 收集此 H1 区间内的 actions
+    const subActions = doc.actions.filter(
+      (a) => a.line > h1.line && a.line < nextH1Line
+    );
+
+    // 找到此 H1 的标题
+    const headingMatch = lines[h1.line]?.match(/^#{1,6}\s+(.+?)\s*$/);
+    const h1Title = headingMatch ? headingMatch[1] : h1.flow.title || "Flow";
+
+    // 构造子文档
+    const subDoc: MarkdownMetaDocument = {
+      version: doc.version,
+      document: {
+        defaults: doc.document.defaults,
+        namespaces: {
+          flow: {
+            id: h1.flow.id,
+            title: h1.flow.title || h1Title,
+            direction: h1.flow.direction,
+            entry: h1.flow.entry,
+          },
+        },
+      },
+      nodes: subNodes,
+      actions: subActions,
+    };
+
+    graphs.push(buildFlowGraph(subDoc));
+  }
+
+  return graphs;
 }
 
 export function buildFlowGraph(doc: MarkdownMetaDocument): FlowGraph {
@@ -130,7 +221,8 @@ export function buildFlowGraph(doc: MarkdownMetaDocument): FlowGraph {
 
     // branches 边
     if (flow.branches && flow.branches.length > 0) {
-      for (const branch of flow.branches) {
+      for (let i = 0; i < flow.branches.length; i++) {
+        const branch = flow.branches[i];
         if (!seenIds.has(branch.to) && !willBeSeenLater(doc, branch.to, node.line)) {
           diagnostics.push({
             type: "invalid-branch-target",
@@ -143,6 +235,8 @@ export function buildFlowGraph(doc: MarkdownMetaDocument): FlowGraph {
           from: flow.id,
           to: branch.to,
           label: branch.label,
+          branchIndex: i,
+          branchCount: flow.branches.length,
         });
       }
     }

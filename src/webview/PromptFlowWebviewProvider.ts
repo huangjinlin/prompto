@@ -5,7 +5,7 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
-import { extractFlowGraph, FlowGraph } from "../services/MarkdownFlowService";
+import { extractFlowGraphs, FlowGraph } from "../services/MarkdownFlowService";
 import {
   findPromptoMetaForHeading,
   findPromptoMetaForAction,
@@ -82,11 +82,11 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const lines = getDocumentLines(document);
-    const graph = extractFlowGraph(lines);
+    const graphs = extractFlowGraphs(lines);
 
     this._view.webview.postMessage({
       type: "updateFlow",
-      graph,
+      graphs,
     });
   }
 
@@ -95,7 +95,7 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
     if (this._view) {
       this._view.webview.postMessage({
         type: "updateFlow",
-        graph: { nodes: [], edges: [], diagnostics: [] },
+        graphs: [],
       });
     }
   }

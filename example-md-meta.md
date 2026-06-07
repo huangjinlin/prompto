@@ -1,3 +1,44 @@
+# 📋 准备
+<!-- md-meta
+version: 1
+defaults:
+  prompto:
+    deliveryTarget: githubCopilotChat
+    outputMode: chatPrefill
+  flow:
+    direction: TB
+  outline:
+    status: todo
+flow:
+  id: daily-prepare
+  title: 准备
+  entry: prepare.entry
+-->
+
+## 🌀 启动claudeCode
+<!-- md-meta
+version: 1
+flow:
+  id: prepare.entry
+  kind: start
+  next: prepare.readClaude
+-->
+## 📖 读取任务
+<!-- md-meta
+version: 1
+flow:
+  id: prepare.readClaude
+  kind:  action
+  next: prepare.finish
+-->
+## ✅ 完成
+<!-- md-meta
+version: 1
+flow:
+  id: prepare.finish
+  kind: end
+-->
+
 # 每日操作
 
 <!-- md-meta
