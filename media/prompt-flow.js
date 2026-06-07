@@ -7,6 +7,9 @@
   var currentGraphs = [];
   var activeGraphId = null; // null = show all
   var highlightedNodeId = null;
+  var nodeBodyPreviews = {};
+  var activePreviewNodeId = null;
+  var previewHideTimer = null;
   var hasSavedScale = (savedState && typeof savedState.scale === "number");
   var isSwitchingGraph = false; // 下拉切换时保持 scale
 
@@ -85,6 +88,7 @@
 
     var visible = getVisibleGraphs();
     var html = "";
+    nodeBodyPreviews = {};
 
     // 标题栏
     html += '<div class="flow-header">';
@@ -113,6 +117,8 @@
     html += '<span id="zoom-level" class="zoom-level">' + Math.round(scale * 100) + '%</span>';
     html += '<button id="btn-zout">−</button>';
     html += "</div></div>";
+
+    html += '<div id="node-body-preview" class="node-body-preview" aria-hidden="true"></div>';
 
     // 视口容器
     html += '<div class="flow-viewport" id="flow-viewport">';
@@ -216,6 +222,32 @@
     // 节点右键：上下文菜单
     var viewport = document.getElementById("flow-viewport");
     if (viewport) {
+      var preview = document.getElementById("node-body-preview");
+      var bodyNodes = viewport.querySelectorAll('.flow-node[data-has-body="1"]');
+      for (var bi = 0; bi < bodyNodes.length; bi++) {
+        (function (nodeEl) {
+          nodeEl.addEventListener("mouseenter", function () {
+            if (previewHideTimer) {
+              clearTimeout(previewHideTimer);
+              previewHideTimer = null;
+            }
+            showNodeBodyPreview(preview, nodeEl.dataset.id);
+          });
+          nodeEl.addEventListener("mouseleave", function () {
+            if (previewHideTimer) {
+              clearTimeout(previewHideTimer);
+            }
+            previewHideTimer = setTimeout(function () {
+              hideNodeBodyPreview();
+            }, 80);
+          });
+        })(bodyNodes[bi]);
+      }
+
+      viewport.addEventListener("mouseleave", function () {
+        hideNodeBodyPreview();
+      });
+
       viewport.addEventListener("click", function (e) {
         // 小圆点点击：弹出上下文菜单（优先判断，不受拖拽影响）
         if (e.target.classList.contains("prompto-indicator")) {
@@ -241,6 +273,7 @@
       });
 
       viewport.addEventListener("contextmenu", function (e) {
+        hideNodeBodyPreview();
         var nodeEl = e.target.closest(".flow-node");
         if (!nodeEl) return;
         e.preventDefault();
@@ -339,6 +372,30 @@
   function hideContextMenu() {
     var existing = document.getElementById("flow-context-menu");
     if (existing) existing.remove();
+  }
+
+  function showNodeBodyPreview(preview, nodeId) {
+    var text = nodeBodyPreviews[nodeId];
+    if (!text || !preview) {
+      return;
+    }
+
+    if (activePreviewNodeId === nodeId && preview.getAttribute("aria-hidden") === "false") {
+      return;
+    }
+
+    preview.textContent = text;
+    preview.setAttribute("aria-hidden", "false");
+    activePreviewNodeId = nodeId;
+  }
+
+  function hideNodeBodyPreview() {
+    var preview = document.getElementById("node-body-preview");
+    if (!preview) {
+      return;
+    }
+    preview.setAttribute("aria-hidden", "true");
+    activePreviewNodeId = null;
   }
 
   // ── 变换 ──
@@ -458,7 +515,8 @@
     var cx = x + w / 2;
     var cy = y + h / 2;
     var color = getNodeColor(node.kind);
-    var cls = "flow-node" + (node.id === highlightedNodeId ? " highlighted" : "");
+    var hasBody = !!(node.hasBody && node.bodyPreview);
+    var cls = "flow-node" + (node.id === highlightedNodeId ? " highlighted" : "") + (hasBody ? " has-body" : "");
 
     var shape = "";
     if (node.kind === "start" || node.kind === "end") {
@@ -478,10 +536,18 @@
     var labelTransform = 'transform="translate(' + cx + ',' + cy + ') scale(' + invScale + ')"';
 
     var hasPrompts = node.promptoItems && node.promptoItems.length > 0;
-    var indicator = hasPrompts ? '<circle class="prompto-indicator" cx="' + (x + w - 6) + '" cy="' + (y + 6) + '" r="4" fill="#f0ad4e"/>' : '';
+    var indicator = hasPrompts ? '<circle class="prompto-indicator" cx="' + (x + w - 7) + '" cy="' + (y + 7) + '" r="4.5" fill="#f0ad4e" stroke="var(--flow-bg)" stroke-width="1"/>' : '';
+    var bodyIndicator = hasBody
+      ? '<rect class="flow-body-indicator" x="' + (x + 22) + '" y="' + (y + h - 5) + '" width="' + (w - 44) + '" height="3" rx="1.5"/>' +
+        '<circle class="flow-body-dot" cx="' + cx + '" cy="' + (y + h - 3.5) + '" r="1.8"/>'
+      : '';
 
-    return '<g class="' + cls + '" data-id="' + node.id + '" data-line="' + node.line + '">' +
-      shape + indicator + '<text class="label" ' + labelTransform + '>​' + escapeHtml(label) + "</text></g>";
+    if (hasBody) {
+      nodeBodyPreviews[node.id] = node.bodyPreview;
+    }
+
+    return '<g class="' + cls + '" data-id="' + node.id + '" data-line="' + node.line + '" data-has-body="' + (hasBody ? "1" : "0") + '">' +
+      shape + bodyIndicator + '<text class="label" ' + labelTransform + '>​' + escapeHtml(label) + "</text>" + indicator + '</g>';
   }
 
   function renderEdge(edge) {
@@ -563,16 +629,19 @@
     var nodeMap = {};
     var inDegree = {};
     var adj = {};
+    var incoming = {};
 
     for (var i = 0; i < nodes.length; i++) {
       nodeMap[nodes[i].id] = nodes[i];
       inDegree[nodes[i].id] = 0;
       adj[nodes[i].id] = [];
+      incoming[nodes[i].id] = [];
     }
     for (var j = 0; j < edges.length; j++) {
       var e = edges[j];
       if (nodeMap[e.from] && nodeMap[e.to]) {
         adj[e.from].push(e.to);
+        incoming[e.to].push(e.from);
         inDegree[e.to]++;
       }
     }
@@ -618,11 +687,59 @@
     var nodePositions = {};
     for (var li = 0; li < layers.length; li++) {
       var lay = layers[li];
-      var layerWidth = lay.length * (NODE_WIDTH + NODE_GAP) - NODE_GAP;
-      var startX = -layerWidth / 2;
+      var minCenterGap = NODE_WIDTH + NODE_GAP;
+      var placements = [];
+
       for (var ni = 0; ni < lay.length; ni++) {
-        nodePositions[lay[ni]] = {
-          x: startX + ni * (NODE_WIDTH + NODE_GAP),
+        var nid = lay[ni];
+        var parents = incoming[nid] || [];
+        var sumX = 0;
+        var cntX = 0;
+        for (var pi = 0; pi < parents.length; pi++) {
+          var parentPos = nodePositions[parents[pi]];
+          if (parentPos) {
+            sumX += parentPos.x;
+            cntX++;
+          }
+        }
+
+        // 优先贴近父节点水平位置；无父节点时回退到层内均匀分布
+        var fallbackX = (ni - (lay.length - 1) / 2) * minCenterGap;
+        var desiredX = cntX > 0 ? (sumX / cntX) : fallbackX;
+        placements.push({ id: nid, desiredX: desiredX, x: desiredX });
+      }
+
+      placements.sort(function (a, b) {
+        return a.desiredX - b.desiredX;
+      });
+
+      for (var si = 1; si < placements.length; si++) {
+        var prev = placements[si - 1];
+        var cur = placements[si];
+        if (cur.x - prev.x < minCenterGap) {
+          cur.x = prev.x + minCenterGap;
+        }
+      }
+
+      // 同层整体回中：保证 1 对多分支时，子节点簇中心对齐父节点中心
+      if (placements.length > 0) {
+        var sumDesired = 0;
+        var sumActual = 0;
+        for (var ci = 0; ci < placements.length; ci++) {
+          sumDesired += placements[ci].desiredX;
+          sumActual += placements[ci].x;
+        }
+        var shift = (sumDesired / placements.length) - (sumActual / placements.length);
+        if (Math.abs(shift) > 0.001) {
+          for (var sj = 0; sj < placements.length; sj++) {
+            placements[sj].x += shift;
+          }
+        }
+      }
+
+      for (var ai = 0; ai < placements.length; ai++) {
+        nodePositions[placements[ai].id] = {
+          x: placements[ai].x,
           y: li * (NODE_HEIGHT + LAYER_GAP),
         };
       }
@@ -647,6 +764,8 @@
           kind: nodes[n].kind,
           line: nodes[n].line,
           promptoItems: nodes[n].promptoItems,
+          hasBody: nodes[n].hasBody,
+          bodyPreview: nodes[n].bodyPreview,
           x: nodePositions[nodes[n].id].x + offsetX,
           y: nodePositions[nodes[n].id].y,
         });

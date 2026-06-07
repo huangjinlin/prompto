@@ -27,6 +27,8 @@ export interface FlowNode {
   line: number;
   group?: string;
   promptoItems?: FlowNodePrompto[];
+  hasBody?: boolean;
+  bodyPreview?: string;
 }
 
 export interface FlowEdge {
@@ -58,7 +60,7 @@ export interface FlowDiagnostic {
 
 export function extractFlowGraph(lines: string[]): FlowGraph {
   const doc = parseMarkdownMetaDocument(lines);
-  return buildFlowGraph(doc);
+  return buildFlowGraph(doc, lines);
 }
 
 /**
@@ -103,7 +105,7 @@ export function extractFlowGraphs(lines: string[]): FlowGraph[] {
   }
 
   if (unique.length === 0) {
-    return [buildFlowGraph(doc)];
+    return [buildFlowGraph(doc, lines)];
   }
 
   const graphs: FlowGraph[] = [];
@@ -144,13 +146,13 @@ export function extractFlowGraphs(lines: string[]): FlowGraph[] {
       actions: subActions,
     };
 
-    graphs.push(buildFlowGraph(subDoc));
+    graphs.push(buildFlowGraph(subDoc, lines));
   }
 
   return graphs;
 }
 
-export function buildFlowGraph(doc: MarkdownMetaDocument): FlowGraph {
+export function buildFlowGraph(doc: MarkdownMetaDocument, lines?: string[]): FlowGraph {
   const diagnostics: FlowDiagnostic[] = [];
   const nodes: FlowNode[] = [];
   const edges: FlowEdge[] = [];
@@ -209,6 +211,8 @@ export function buildFlowGraph(doc: MarkdownMetaDocument): FlowGraph {
       line: node.line,
       group: flow.group,
       promptoItems: collectPromptoItems(doc, node),
+      hasBody: hasNodeBody(lines, node),
+      bodyPreview: buildNodeBodyPreview(lines, node),
     });
   }
 
@@ -379,4 +383,74 @@ function collectPromptoItems(doc: MarkdownMetaDocument, node: NodeMeta): FlowNod
   }
 
   return items.length > 0 ? items : undefined;
+}
+
+function hasNodeBody(lines: string[] | undefined, node: NodeMeta): boolean {
+  if (!lines) {
+    return false;
+  }
+  return extractNodeBody(lines, node).length > 0;
+}
+
+function buildNodeBodyPreview(lines: string[] | undefined, node: NodeMeta): string | undefined {
+  if (!lines) {
+    return undefined;
+  }
+  const body = extractNodeBody(lines, node);
+  if (!body) {
+    return undefined;
+  }
+
+  const bodyLines = body.split("\n");
+  const maxLines = 8;
+  if (bodyLines.length <= maxLines) {
+    return body;
+  }
+
+  return bodyLines.slice(0, maxLines).join("\n") + "\n...";
+}
+
+function extractNodeBody(lines: string[], node: NodeMeta): string {
+  const bodyLines: string[] = [];
+  let i = node.line + 1;
+
+  const MD_META_START = /^\s*<!--\s*md-meta(?:\s*-->)?\s*$/;
+  const COMMENT_END = /^\s*-->\s*$/;
+
+  while (i < lines.length && !lines[i].trim()) {
+    i++;
+  }
+
+  if (i < lines.length && /^\s*<!--/.test(lines[i])) {
+    while (i < lines.length && !/^\s*-->/.test(lines[i])) {
+      i++;
+    }
+    if (i < lines.length) {
+      i++;
+    }
+  }
+
+  while (i < lines.length && !lines[i].trim()) {
+    i++;
+  }
+
+  for (; i < lines.length; i++) {
+    const line = lines[i];
+    const nextHeading = line.match(/^(#{1,6})\s+/);
+    if (nextHeading && nextHeading[1].length <= node.level) {
+      break;
+    }
+
+    // 过滤正文中的所有 md-meta 块（不仅是第一个）
+    if (MD_META_START.test(line)) {
+      while (i < lines.length && !COMMENT_END.test(lines[i])) {
+        i++;
+      }
+      continue;
+    }
+
+    bodyLines.push(line);
+  }
+
+  return bodyLines.join("\n").trim();
 }

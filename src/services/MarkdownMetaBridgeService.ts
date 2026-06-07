@@ -114,6 +114,8 @@ export function getNodeBody(
 
   const headingLevel = headingMatch[1].length;
   const bodyLines: string[] = [];
+  const MD_META_START = /^\s*<!--\s*md-meta(?:\s*-->)?\s*$/;
+  const COMMENT_END = /^\s*-->\s*$/;
 
   // 跳过 meta 块，找到正文起始行
   let i = headingLine + 1;
@@ -123,9 +125,9 @@ export function getNodeBody(
     i++;
   }
 
-  // 跳过 meta 块
+  // 跳过紧邻标题的 meta 块
   if (i < lines.length && /^\s*<!--/.test(lines[i])) {
-    while (i < lines.length && !/^\s*-->/.test(lines[i])) {
+    while (i < lines.length && !COMMENT_END.test(lines[i])) {
       i++;
     }
     if (i < lines.length) {
@@ -145,6 +147,15 @@ export function getNodeBody(
     if (nextHeading && nextHeading[1].length <= headingLevel) {
       break;
     }
+
+    // 过滤正文中的所有 md-meta 块（例如 action 级元信息）
+    if (MD_META_START.test(line)) {
+      while (i < lines.length && !COMMENT_END.test(lines[i])) {
+        i++;
+      }
+      continue;
+    }
+
     bodyLines.push(line);
   }
 
@@ -153,5 +164,5 @@ export function getNodeBody(
     bodyLines.pop();
   }
 
-  return bodyLines.join("\n");
+  return bodyLines.join("\n").trim();
 }

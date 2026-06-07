@@ -12,6 +12,7 @@
   --flow-decision: #c586c0;
   --flow-end: #d4d4d4;
   --flow-accent: var(--vscode-textLink-foreground);
+  --flow-body-indicator: #7fc7ff;
 }
 
 * {
@@ -42,6 +43,7 @@ html {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .empty-state {
@@ -209,6 +211,22 @@ html {
   pointer-events: none;
 }
 
+.flow-body-indicator {
+  fill: var(--flow-body-indicator);
+  opacity: 1;
+  pointer-events: none;
+}
+
+.flow-node.has-body:hover .flow-body-indicator {
+  opacity: 1;
+}
+
+.flow-body-dot {
+  fill: var(--flow-body-indicator);
+  opacity: 1;
+  pointer-events: none;
+}
+
 .flow-edge {
   fill: none;
   stroke: var(--flow-edge);
@@ -277,4 +295,32 @@ html {
   height: 1px;
   margin: 4px 8px;
   background: var(--vscode-menu-separatorBackground, var(--flow-border));
+}
+
+.node-body-preview {
+  position: absolute;
+  top: 44px;
+  left: 8px;
+  right: 8px;
+  z-index: 900;
+  display: block;
+  opacity: 0;
+  visibility: hidden;
+  max-height: none;
+  overflow: visible;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--flow-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, #101522 8%);
+  color: var(--flow-text);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.node-body-preview[aria-hidden="false"] {
+  opacity: 1;
+  visibility: visible;
 }
