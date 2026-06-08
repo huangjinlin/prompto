@@ -189,7 +189,7 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
           outputMode: parsePromptOutputMode(prompto.outputMode),
           deliveryTarget: parsePromptDeliveryTarget(prompto.deliveryTarget),
         },
-        selectedTextContext: buildSelectedTextContextFromPrompto(prompto),
+        selectedTextContext: buildSelectedTextContextFromPrompto(prompto, getNodeBody(lines, headingLine)),
         workspaceFolder,
       });
     }
@@ -219,23 +219,59 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
       if (promptPath) {
         const fs = await import("fs");
         const content = fs.readFileSync(promptPath, "utf-8").replace(/\r\n/g, "\n");
-        await deliverPromptContent(promptName, content, deliveryOptions);
+        const processed = this._replacePromptVariables(content, selectedTextContext);
+        await deliverPromptContent(promptName, processed, deliveryOptions);
         return;
       }
     }
 
     // 如果有 inlinePromptContent
     if (selectedTextContext.inlinePromptContent) {
-      let content = selectedTextContext.inlinePromptContent;
-      // 替换变量
-      if (selectedTextContext.selectedText) {
-        content = content.replace(/\{\{selectedText\}\}/g, selectedTextContext.selectedText);
-      }
-      await deliverPromptContent(promptName, content, deliveryOptions);
+      const processed = this._replacePromptVariables(selectedTextContext.inlinePromptContent, selectedTextContext);
+      await deliverPromptContent(promptName, processed, deliveryOptions);
       return;
     }
 
     vscode.window.showErrorMessage("No prompt content found for this node.");
+  }
+
+  private _replacePromptVariables(
+    content: string,
+    selectedTextContext: {
+      selectedText: string;
+      variables: Record<string, string>;
+    }
+  ): string {
+    let processed = content;
+
+    // 替换 {{selectedText}}
+    if (processed.includes("{{selectedText}}")) {
+      processed = processed.replace(/\{\{selectedText\}\}/g, selectedTextContext.selectedText || "");
+    }
+
+    // 替换 {{fileName}}
+    if (processed.includes("{{fileName}}") && this._currentDocument) {
+      const fileName = path.basename(this._currentDocument.fileName);
+      processed = processed.replace(/\{\{fileName\}\}/g, fileName);
+    }
+
+    // 替换自定义变量
+    const customVars = processed.match(/\{\{(\w+)\}\}/g);
+    if (customVars) {
+      const uniqueVars = new Set(
+        customVars
+          .map((v) => v.replace(/\{\{|\}\}/g, ""))
+          .filter((name) => name !== "selectedText" && name !== "fileName")
+      );
+      for (const varName of uniqueVars) {
+        const value = selectedTextContext.variables[varName];
+        if (value !== undefined) {
+          processed = processed.replace(new RegExp(`\\{\\{${varName}\\}\\}`, "g"), value);
+        }
+      }
+    }
+
+    return processed;
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
