@@ -13,6 +13,7 @@ export interface PromptoMeta {
   deliveryTarget?: string;
   outputMode?: string;
   title?: string;
+  vars?: Record<string, string>;
   _resolved?: PromptoConflictResolution;
 }
 

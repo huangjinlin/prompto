@@ -83,7 +83,14 @@ export function buildSelectedTextContextFromPrompto(
   const selectedText = body || "";
   const variables: Record<string, string> = {};
 
-  // 从 prompto 中提取变量相关的字段
+  // 从 prompto.vars 提取自定义变量
+  if (prompto.vars) {
+    for (const [key, value] of Object.entries(prompto.vars)) {
+      variables[key] = value;
+    }
+  }
+
+  // 从 prompto 中提取系统字段
   if (prompto.deliveryTarget) {
     variables.deliveryTarget = prompto.deliveryTarget;
   }

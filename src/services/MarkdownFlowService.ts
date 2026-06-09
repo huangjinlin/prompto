@@ -18,6 +18,7 @@ export interface FlowNodePrompto {
   promptContent?: string;
   deliveryTarget?: string;
   outputMode?: string;
+  vars?: Record<string, string>;
 }
 
 export interface FlowNode {

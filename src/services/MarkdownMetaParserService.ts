@@ -207,6 +207,19 @@ function parsePromptoMeta(obj: Record<string, unknown>): PromptoMeta {
     meta.title = obj.title;
   }
 
+  // 提取自定义变量（vars 子结构）
+  if (obj.vars && typeof obj.vars === "object" && !Array.isArray(obj.vars)) {
+    const vars: Record<string, string> = {};
+    for (const [key, value] of Object.entries(obj.vars as Record<string, unknown>)) {
+      if (typeof value === "string") {
+        vars[key] = value;
+      }
+    }
+    if (Object.keys(vars).length > 0) {
+      meta.vars = vars;
+    }
+  }
+
   // 冲突检测
   if (meta.prompt && meta.promptContent) {
     meta._resolved = {
