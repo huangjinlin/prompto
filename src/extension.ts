@@ -257,7 +257,21 @@ function registerCommands(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand("prompto.showFlow", async () => {
       await vscode.commands.executeCommand("prompto.flowView.focus");
-    })
+    }),
+
+    vscode.commands.registerCommand(
+      "prompto.sendSelectionToChat",
+      async () => {
+        await sendSelectionToChat("chatSubmit");
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      "prompto.prefillSelectionToChat",
+      async () => {
+        await sendSelectionToChat("chatPrefill");
+      }
+    )
   );
 }
 
@@ -956,4 +970,29 @@ async function runMarkdownPromptAction(
   } catch (error) {
     vscode.window.showErrorMessage(`Error running Prompto action: ${error}`);
   }
+}
+
+async function sendSelectionToChat(
+  outputMode: "chatPrefill" | "chatSubmit"
+): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showErrorMessage("No active editor found.");
+    return;
+  }
+
+  const selectedText = editor.document.getText(editor.selection).trim();
+  if (!selectedText) {
+    vscode.window.showErrorMessage("No text selected.");
+    return;
+  }
+
+  const deliveryTarget =
+    vscode.workspace.getConfiguration("prompto").get<string>("deliveryTarget") ??
+    "githubCopilotChat";
+
+  await deliverPromptContent("Selection", selectedText, {
+    outputMode,
+    deliveryTarget: parsePromptDeliveryTarget(deliveryTarget),
+  });
 }

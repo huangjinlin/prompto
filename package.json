@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.16",
+  "version": "1.0.18",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -42,6 +42,14 @@
         "command": "prompto.showFlow",
         "title": "Prompto: Show Flow Graph",
         "icon": "$(project)"
+      },
+      {
+        "command": "prompto.sendSelectionToChat",
+        "title": "Send Selection to Chat"
+      },
+      {
+        "command": "prompto.prefillSelectionToChat",
+        "title": "Prefill Selection to Chat"
       }
     ],
     "views": {
@@ -70,6 +78,18 @@
       ]
     },
     "menus": {
+      "editor/context": [
+        {
+          "command": "prompto.sendSelectionToChat",
+          "when": "editorHasSelection && editorLangId == markdown",
+          "group": "prompto@1"
+        },
+        {
+          "command": "prompto.prefillSelectionToChat",
+          "when": "editorHasSelection && editorLangId == markdown",
+          "group": "prompto@2"
+        }
+      ],
       "view/title": [
         {
           "command": "prompto.addPrompt",
@@ -105,6 +125,14 @@
         {
           "command": "prompto.showFlow",
           "when": "editorLangId == markdown"
+        },
+        {
+          "command": "prompto.sendSelectionToChat",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "prompto.prefillSelectionToChat",
+          "when": "editorLangId == markdown"
         }
       ]
     },
@@ -114,6 +142,18 @@
         "key": "ctrl+alt+p",
         "mac": "cmd+alt+p",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "prompto.sendSelectionToChat",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorHasSelection && editorLangId == markdown"
+      },
+      {
+        "command": "prompto.prefillSelectionToChat",
+        "key": "ctrl+space",
+        "mac": "cmd+space",
+        "when": "editorHasSelection && editorLangId == markdown"
       }
     ],
     "configuration": {
