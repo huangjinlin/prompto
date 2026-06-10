@@ -166,7 +166,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // 注册 Flow 面板
-  const flowProvider = new PromptFlowWebviewProvider(context.extensionUri);
+  const flowProvider = new PromptFlowWebviewProvider(context.extensionUri, context.workspaceState);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       PromptFlowWebviewProvider.viewType,
@@ -174,28 +174,10 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // 监听编辑器切换，自动刷新 Flow 面板
+  // 监听文档保存，如果保存的是 pinned 文件则刷新侧边栏
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor?.document.languageId === "markdown") {
-        flowProvider.updateFlow(editor.document);
-      } else {
-        flowProvider.clearFlow();
-      }
-    })
-  );
-
-  // 监听文档变化，自动刷新 Flow 面板
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      const editor = vscode.window.activeTextEditor;
-      if (
-        editor &&
-        event.document === editor.document &&
-        editor.document.languageId === "markdown"
-      ) {
-        flowProvider.updateFlow(editor.document);
-      }
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      flowProvider.refreshIfPinned(document);
     })
   );
 

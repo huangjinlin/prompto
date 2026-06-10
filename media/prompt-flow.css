@@ -103,6 +103,32 @@ html {
   background: var(--flow-node-hover);
 }
 
+.btn-file {
+  background: none;
+  border: 1px solid var(--flow-border);
+  color: var(--flow-text);
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.btn-file:hover {
+  background: var(--flow-node-hover);
+}
+
+.pinned-file-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  cursor: default;
+}
+
 .zoom-level {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);

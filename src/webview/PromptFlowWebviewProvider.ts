@@ -27,9 +27,18 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _extensionUri: vscode.Uri;
   private _currentDocument?: vscode.TextDocument;
+  private _workspaceState: vscode.Memento;
+  private _pinnedFilePath: string | null = null;
 
-  constructor(extensionUri: vscode.Uri) {
+  private static readonly PINNED_FILE_KEY = "prompto.flowView.pinnedFile";
+
+  constructor(extensionUri: vscode.Uri, workspaceState: vscode.Memento) {
     this._extensionUri = extensionUri;
+    this._workspaceState = workspaceState;
+    this._pinnedFilePath = workspaceState.get<string | null>(
+      PromptFlowWebviewProvider.PINNED_FILE_KEY,
+      null
+    );
   }
 
   public resolveWebviewView(
@@ -49,10 +58,15 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "ready":
-          // 如果已有活跃文档，立即发送 flow 数据
-          if (this._currentDocument) {
-            this.updateFlow(this._currentDocument);
+          // 恢复 pinned 文件，或等待用户选择
+          if (this._pinnedFilePath) {
+            await this._restorePinnedFile();
+          } else {
+            this._sendPinnedFileName(null);
           }
+          break;
+        case "selectFile":
+          await this._selectFile();
           break;
         case "locateNode":
           this._locateNode(msg.line);
@@ -81,13 +95,17 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const lines = getDocumentLines(document);
-    const graphs = extractFlowGraphs(lines);
+    this._renderDocument(document);
+  }
 
-    this._view.webview.postMessage({
-      type: "updateFlow",
-      graphs,
-    });
+  /**
+   * 外部调用：如果保存的文件是 pinned 文件，刷新侧边栏
+   */
+  public refreshIfPinned(document: vscode.TextDocument): void {
+    if (this._pinnedFilePath && document.uri.fsPath === this._pinnedFilePath) {
+      this._currentDocument = document;
+      this._renderDocument(document);
+    }
   }
 
   public clearFlow(): void {
@@ -98,6 +116,93 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
         graphs: [],
       });
     }
+  }
+
+  private _renderDocument(document: vscode.TextDocument): void {
+    if (!this._view?.visible) {
+      return;
+    }
+
+    const lines = getDocumentLines(document);
+    const graphs = extractFlowGraphs(lines);
+
+    this._view.webview.postMessage({
+      type: "updateFlow",
+      graphs,
+    });
+  }
+
+  private async _selectFile(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      filters: { Markdown: ["md"] },
+      title: "Select a markdown file for Flow Graph",
+    });
+
+    if (!uris || uris.length === 0) {
+      return;
+    }
+
+    const filePath = uris[0].fsPath;
+    await this._pinFile(filePath);
+  }
+
+  private async _pinFile(filePath: string): Promise<void> {
+    this._pinnedFilePath = filePath;
+    await this._workspaceState.update(
+      PromptFlowWebviewProvider.PINNED_FILE_KEY,
+      filePath
+    );
+
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+      this._currentDocument = doc;
+      this._sendPinnedFileName(filePath);
+      this._renderDocument(doc);
+    } catch {
+      vscode.window.showErrorMessage(`Cannot open file: ${filePath}`);
+      this._pinnedFilePath = null;
+      await this._workspaceState.update(
+        PromptFlowWebviewProvider.PINNED_FILE_KEY,
+        null
+      );
+      this._sendPinnedFileName(null);
+    }
+  }
+
+  private async _restorePinnedFile(): Promise<void> {
+    if (!this._pinnedFilePath) {
+      this._sendPinnedFileName(null);
+      return;
+    }
+
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(this._pinnedFilePath));
+      this._currentDocument = doc;
+      this._sendPinnedFileName(this._pinnedFilePath);
+      this._renderDocument(doc);
+    } catch {
+      // 文件不存在，清除 pinned
+      this._pinnedFilePath = null;
+      await this._workspaceState.update(
+        PromptFlowWebviewProvider.PINNED_FILE_KEY,
+        null
+      );
+      this._sendPinnedFileName(null);
+    }
+  }
+
+  private _sendPinnedFileName(filePath: string | null): void {
+    if (!this._view) {
+      return;
+    }
+    const name = filePath ? path.basename(filePath, ".md") : null;
+    this._view.webview.postMessage({
+      type: "pinnedFileName",
+      name,
+    });
   }
 
   private _locateNode(line: number): void {
@@ -292,12 +397,7 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
   <title>Flow Graph</title>
 </head>
 <body>
-  <div id="flow-container">
-    <div class="empty-state">
-      <div class="icon">⊞</div>
-      <div>Open a markdown file with flow metadata</div>
-    </div>
-  </div>
+  <div id="flow-container"></div>
   <script src="${scriptUri}"></script>
 </body>
 </html>`;

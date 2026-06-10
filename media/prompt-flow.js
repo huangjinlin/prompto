@@ -10,7 +10,9 @@
   var nodeBodyPreviews = {};
   var activePreviewNodeId = null;
   var previewHideTimer = null;
-  var hasSavedScale = (savedState && typeof savedState.scale === "number");
+  var pinnedFileName = null;
+  var hasSavedViewState = false;
+  var hasRenderedGraph = false;
   var isSwitchingGraph = false; // 下拉切换时保持 scale
 
   // ── 布局常量 ──
@@ -38,10 +40,27 @@
   var savedState = vscode.getState();
   if (savedState && typeof savedState.scale === "number") {
     scale = savedState.scale;
+    hasSavedViewState = true;
+  }
+  if (savedState && typeof savedState.translateX === "number") {
+    translateX = savedState.translateX;
+    hasSavedViewState = true;
+  }
+  if (savedState && typeof savedState.translateY === "number") {
+    translateY = savedState.translateY;
+    hasSavedViewState = true;
+  }
+  if (savedState && typeof savedState.activeGraphId !== "undefined") {
+    activeGraphId = savedState.activeGraphId;
   }
 
   function saveState() {
-    vscode.setState({ scale: scale });
+    vscode.setState({
+      scale: scale,
+      translateX: translateX,
+      translateY: translateY,
+      activeGraphId: activeGraphId,
+    });
   }
 
   // ── 初始化 ──
@@ -64,6 +83,9 @@
     } else if (msg.type === "highlightNode") {
       highlightedNodeId = msg.nodeId;
       updateHighlight();
+    } else if (msg.type === "pinnedFileName") {
+      pinnedFileName = msg.name;
+      render();
     }
   }
 
@@ -81,8 +103,18 @@
   function render() {
     var container = document.getElementById("flow-container");
     if (!currentGraphs || currentGraphs.length === 0) {
-      container.innerHTML =
-        '<div class="empty-state"><div class="icon">⊞</div><div>No flow nodes found</div><div style="font-size:11px">Add flow metadata to your markdown headings</div></div>';
+      var emptyHtml = '';
+      emptyHtml += '<div class="flow-header">';
+      emptyHtml += '<div class="header-left">';
+      emptyHtml += '<button id="btn-select-file" class="btn-file" title="Select markdown file">📂</button>';
+      emptyHtml += '</div></div>';
+      emptyHtml += '<div class="empty-state">';
+      emptyHtml += '<div class="icon">⊞</div>';
+      emptyHtml += '<div>' + (pinnedFileName ? 'No flow nodes found in this file' : 'Click 📂 to select a markdown file') + '</div>';
+      emptyHtml += '</div>';
+      container.innerHTML = emptyHtml;
+      var btn = document.getElementById("btn-select-file");
+      if (btn) btn.addEventListener("click", function () { vscode.postMessage({ type: "selectFile" }); });
       return;
     }
 
@@ -93,6 +125,7 @@
     // 标题栏
     html += '<div class="flow-header">';
     html += '<div class="header-left">';
+    html += '<button id="btn-select-file" class="btn-file" title="Select markdown file">📂</button>';
 
     // 下拉选择器（多图时显示）
     if (currentGraphs.length > 1) {
@@ -195,7 +228,12 @@
     updateHighlight();
 
     bindButtons();
-    resetTransform();
+    if (!hasRenderedGraph || isSwitchingGraph || hasSavedViewState) {
+      resetTransform();
+    } else {
+      applyTransform();
+    }
+    hasRenderedGraph = true;
     setupInteractions();
   }
 
@@ -203,9 +241,13 @@
     var btnFit = document.getElementById("btn-fit");
     var btnZin = document.getElementById("btn-zin");
     var btnZout = document.getElementById("btn-zout");
+    var btnSelectFile = document.getElementById("btn-select-file");
     if (btnFit) btnFit.addEventListener("click", fitView);
     if (btnZin) btnZin.addEventListener("click", zoomIn);
     if (btnZout) btnZout.addEventListener("click", zoomOut);
+    if (btnSelectFile) btnSelectFile.addEventListener("click", function () {
+      vscode.postMessage({ type: "selectFile" });
+    });
 
     // 下拉选择
     var select = document.getElementById("flow-select");
@@ -214,6 +256,7 @@
         var val = select.value;
         activeGraphId = (val === "__all__") ? null : val;
         isSwitchingGraph = true;
+        saveState();
         render();
       });
     }
@@ -434,11 +477,9 @@
       return;
     }
 
-    if (hasSavedScale) {
-      // 首次加载有持久化值：用持久化 scale 居中
-      hasSavedScale = false;
-      translateX = (vw - totalWidth * scale) / 2;
-      translateY = (vh - totalHeight * scale) / 2;
+    if (hasSavedViewState) {
+      // 首次加载恢复完整视图状态（scale + translate）
+      hasSavedViewState = false;
       applyTransform();
       return;
     }
