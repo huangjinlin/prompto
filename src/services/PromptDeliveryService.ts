@@ -8,6 +8,7 @@ export type PromptDeliveryTarget =
 export interface PromptDeliveryOptions {
   outputMode?: PromptOutputMode;
   deliveryTarget?: PromptDeliveryTarget;
+  clipboardFeedback?: "notification" | "statusBar";
 }
 
 export function parsePromptOutputMode(
@@ -157,7 +158,8 @@ async function openClaudeCode(
 async function copyPromptToClipboard(
   promptName: string,
   promptContent: string,
-  fallbackTarget: string | undefined = undefined
+  fallbackTarget: string | undefined = undefined,
+  feedback: "notification" | "statusBar" = "notification"
 ): Promise<void> {
   await vscode.env.clipboard.writeText(promptContent);
 
@@ -165,6 +167,11 @@ async function copyPromptToClipboard(
     vscode.window.showWarningMessage(
       `Could not deliver prompt "${promptName}" to ${fallbackTarget}. Prompt copied to clipboard instead.`
     );
+    return;
+  }
+
+  if (feedback === "statusBar") {
+    vscode.window.setStatusBarMessage("已复制", 3000);
     return;
   }
 
@@ -179,13 +186,15 @@ export async function deliverPromptContent(
   deliveryOptions: PromptDeliveryOptions = {}
 ): Promise<void> {
   const outputMode = resolvePromptOutputMode(deliveryOptions);
-  const deliveryTarget = resolvePromptDeliveryTarget(deliveryOptions);
 
   if (outputMode === "clipboard") {
-    await copyPromptToClipboard(promptName, promptContent);
+    await copyPromptToClipboard(
+      promptName, promptContent, undefined, deliveryOptions.clipboardFeedback
+    );
     return;
   }
 
+  const deliveryTarget = resolvePromptDeliveryTarget(deliveryOptions);
   const submitImmediately = outputMode === "chatSubmit";
   const openedChat =
     deliveryTarget === "claudeCode"

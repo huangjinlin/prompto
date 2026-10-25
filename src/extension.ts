@@ -32,6 +32,7 @@ import {
 } from "./services/MarkdownMetaBridgeService";
 import { parseMarkdownMetaDocument } from "./services/MarkdownMetaParserService";
 import { PromptFlowWebviewProvider } from "./webview/PromptFlowWebviewProvider";
+import { resolveSelectionPathTemplates } from "./services/SelectionPathTemplateService";
 
 let treeProvider: PromptTreeProvider;
 
@@ -252,6 +253,13 @@ function registerCommands(context: vscode.ExtensionContext) {
       "prompto.prefillSelectionToChat",
       async () => {
         await sendSelectionToChat("chatPrefill");
+      }
+    ),
+
+    vscode.commands.registerCommand(
+      "prompto.copySelectionToClipboard",
+      async () => {
+        await sendSelectionToChat("clipboard");
       }
     )
   );
@@ -955,7 +963,7 @@ async function runMarkdownPromptAction(
 }
 
 async function sendSelectionToChat(
-  outputMode: "chatPrefill" | "chatSubmit"
+  outputMode: PromptOutputMode
 ): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -969,12 +977,28 @@ async function sendSelectionToChat(
     return;
   }
 
-  const deliveryTarget =
-    vscode.workspace.getConfiguration("prompto").get<string>("deliveryTarget") ??
-    "githubCopilotChat";
+  let processedText: string;
+  try {
+    processedText = resolveSelectionPathTemplates(
+      selectedText,
+      editor.document.isUntitled ? undefined : editor.document.uri.fsPath
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `Cannot process selection: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return;
+  }
 
-  await deliverPromptContent("Selection", selectedText, {
-    outputMode,
-    deliveryTarget: parsePromptDeliveryTarget(deliveryTarget),
-  });
+  const deliveryOptions: PromptDeliveryOptions = { outputMode };
+  if (outputMode === "clipboard") {
+    deliveryOptions.clipboardFeedback = "statusBar";
+  } else {
+    const deliveryTarget =
+      vscode.workspace.getConfiguration("prompto").get<string>("deliveryTarget") ??
+      "githubCopilotChat";
+    deliveryOptions.deliveryTarget = parsePromptDeliveryTarget(deliveryTarget);
+  }
+
+  await deliverPromptContent("Selection", processedText, deliveryOptions);
 }

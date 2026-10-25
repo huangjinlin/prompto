@@ -50,6 +50,10 @@
       {
         "command": "prompto.prefillSelectionToChat",
         "title": "Prefill Selection to Chat"
+      },
+      {
+        "command": "prompto.copySelectionToClipboard",
+        "title": "Prompto: 复制选中内容（解析路径模板）"
       }
     ],
     "views": {
@@ -88,6 +92,11 @@
           "command": "prompto.prefillSelectionToChat",
           "when": "editorHasSelection && editorLangId == markdown",
           "group": "prompto@2"
+        },
+        {
+          "command": "prompto.copySelectionToClipboard",
+          "when": "editorHasSelection && editorLangId == markdown",
+          "group": "prompto@3"
         }
       ],
       "view/title": [
@@ -132,6 +141,10 @@
         },
         {
           "command": "prompto.prefillSelectionToChat",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "prompto.copySelectionToClipboard",
           "when": "editorLangId == markdown"
         }
       ]

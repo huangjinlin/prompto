@@ -47,6 +47,31 @@ Your prompts are organized in the configured prompt directory. By default this i
 - **`Prompto: Prefill Active Terminal`** - Paste the selected prompt into the current terminal without sending it
 - **`Prompto: Add New Prompt`** - Create a new prompt file
 
+### Send Selected Markdown With File Paths
+
+Select Markdown text and use `Ctrl+Enter` to send it, or `Ctrl+Space` to prefill the configured chat target (`Cmd+Enter` / `Cmd+Space` on macOS). The editor context menu provides the same commands.
+
+To copy instead, use **Prompto: 复制选中内容（解析路径模板）** from the editor context menu or Command Palette. It resolves the same path templates and writes the result to the clipboard without opening Chat or a terminal, regardless of `prompto.deliveryTarget`. Success is shown briefly in the status bar; invalid templates leave the clipboard unchanged. No default shortcut is assigned, and `Ctrl+C` is unchanged. You can bind `prompto.copySelectionToClipboard` in Keyboard Shortcuts.
+
+Use `{{path:relative/path}}` to resolve a path relative to the selected text's source file directory:
+
+```markdown
+Refer to `{{path:../data/data.json}}` for the response format.
+```
+
+For a source file at `D:/project/docs/task.md`, this sends:
+
+```markdown
+Refer to `D:/project/data/data.json` for the response format.
+```
+
+- Multiple templates, spaces, and non-ASCII file names are supported. Output paths use `/` separators.
+- Absolute paths are normalized without requiring a source directory. Relative paths require a saved source file.
+- Files do not have to exist. Templates produce path text, not file attachments, and do not modify the source document.
+- Empty, unclosed, nested, multiline, or URL path templates stop delivery with an error. Home directory shortcuts and drive-relative paths are also rejected.
+- Environment variables are not expanded. Ordinary backtick paths and other `{{variables}}` remain unchanged.
+- Path templates apply only to the selected-text commands, not CodeLens, Flow, or saved prompt execution.
+
 ## ⚙️ Settings
 
 - **`prompto.outputMode`** - Controls what happens after selecting a prompt:
