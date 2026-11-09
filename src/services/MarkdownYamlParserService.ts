@@ -6,9 +6,43 @@
 
 const INDENT_UNIT = 2;
 
-export function parseYamlSubset(content: string): unknown {
+function stripYamlComment(line: string): string {
+  let quote: "'" | '"' | undefined;
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (quote === '"' && character === "\\") {
+      index++;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) {
+        if (quote === "'" && line[index + 1] === "'") {
+          index++;
+        } else {
+          quote = undefined;
+        }
+      }
+      continue;
+    }
+    if (character === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
+      return line.slice(0, index).trimEnd();
+    }
+    if (character === "'" || character === '"') {
+      const prefix = line.slice(0, index).trim();
+      if (!prefix || prefix === "-" || /^(?:-\s+)?[A-Za-z_][A-Za-z0-9_-]*\s*:$/.test(prefix)) {
+        quote = character;
+      }
+    }
+  }
+  return line;
+}
+
+export function parseYamlSubset(content: string, strict = false): unknown {
   const lines = content.split("\n");
   const result = parseBlock(lines, 0, 0);
+  if (strict && lines.slice(result.nextIndex).some(line => stripYamlComment(line).trim())) {
+    throw new Error(`Invalid YAML structure near line ${result.nextIndex + 1}.`);
+  }
   return result.value;
 }
 
@@ -22,15 +56,18 @@ function parseBlock(
   startIndex: number,
   baseIndent: number
 ): ParseResult {
+  while (startIndex < lines.length && !stripYamlComment(lines[startIndex]).trim()) {
+    startIndex++;
+  }
   if (startIndex >= lines.length) {
     return { value: {}, nextIndex: startIndex };
   }
 
   // 判断当前块是数组还是映射
-  const firstLine = lines[startIndex];
+  const firstLine = stripYamlComment(lines[startIndex]);
   const firstTrimmed = firstLine.trimStart();
 
-  if (firstTrimmed.startsWith("- ")) {
+  if (firstTrimmed === "-" || firstTrimmed.startsWith("- ")) {
     return parseArray(lines, startIndex, baseIndent);
   }
 
@@ -46,7 +83,7 @@ function parseMapping(
   let i = startIndex;
 
   while (i < lines.length) {
-    const line = lines[i];
+    const line = stripYamlComment(lines[i]);
     const trimmed = line.trimStart();
 
     if (!trimmed) {
@@ -64,12 +101,15 @@ function parseMapping(
       break;
     }
 
-    const kvMatch = trimmed.match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/);
+    const kvMatch = trimmed.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
     if (!kvMatch) {
       break;
     }
 
     const key = kvMatch[1];
+    if (key === "__proto__") {
+      throw new Error("The __proto__ mapping key is not supported.");
+    }
     const rawValue = kvMatch[2];
 
     if (rawValue === "|") {
@@ -106,7 +146,7 @@ function parseArray(
   let i = startIndex;
 
   while (i < lines.length) {
-    const line = lines[i];
+    const line = stripYamlComment(lines[i]);
     const trimmed = line.trimStart();
 
     if (!trimmed) {
@@ -124,7 +164,7 @@ function parseArray(
       break;
     }
 
-    if (!trimmed.startsWith("- ")) {
+    if (trimmed !== "-" && !trimmed.startsWith("- ")) {
       break;
     }
 
@@ -143,12 +183,15 @@ function parseArray(
       }
     } else {
       const kvMatch = afterDash.match(
-        /^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/
+        /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/
       );
       if (kvMatch) {
         // `- key: value` 形式，收集同缩进的后续 key-value 构成对象
         const obj: Record<string, unknown> = {};
         const key = kvMatch[1];
+        if (key === "__proto__") {
+          throw new Error("The __proto__ mapping key is not supported.");
+        }
         const rawValue = kvMatch[2];
 
         if (rawValue === "|") {
@@ -176,7 +219,7 @@ function parseArray(
 
         // 收集同级（与 `- ` 同缩进）的额外 key: value
         while (i < lines.length) {
-          const nextLine = lines[i];
+          const nextLine = stripYamlComment(lines[i]);
           const nextTrimmed = nextLine.trimStart();
 
           if (!nextTrimmed) {
@@ -190,13 +233,16 @@ function parseArray(
           }
 
           const nextKv = nextTrimmed.match(
-            /^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/
+            /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/
           );
           if (!nextKv) {
             break;
           }
 
           const nextKey = nextKv[1];
+          if (nextKey === "__proto__") {
+            throw new Error("The __proto__ mapping key is not supported.");
+          }
           const nextRawValue = nextKv[2];
 
           if (nextRawValue === "|") {
@@ -306,7 +352,7 @@ function parseScalar(raw: string): unknown {
 
 function findNextIndent(lines: string[], startIndex: number): number {
   for (let i = startIndex; i < lines.length; i++) {
-    const line = lines[i];
+    const line = stripYamlComment(lines[i]);
     const trimmed = line.trimStart();
     if (!trimmed) {
       continue;

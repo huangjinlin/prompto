@@ -307,28 +307,11 @@ export class PromptFlowWebviewProvider implements vscode.WebviewViewProvider {
       rawSelectedText: string;
       selectedText: string;
       variables: Record<string, string>;
-      promptReference?: string;
       inlinePromptContent?: string;
     };
     workspaceFolder?: vscode.WorkspaceFolder;
   }): Promise<void> {
     const { promptName, deliveryOptions, selectedTextContext } = options;
-
-    // 如果有 prompt 引用，解析文件内容
-    if (selectedTextContext.promptReference && options.workspaceFolder) {
-      const { resolvePromptFilePath } = await import("../services/PromptDirectoryService");
-      const promptPath = resolvePromptFilePath(
-        options.workspaceFolder,
-        selectedTextContext.promptReference
-      );
-      if (promptPath) {
-        const fs = await import("fs");
-        const content = fs.readFileSync(promptPath, "utf-8").replace(/\r\n/g, "\n");
-        const processed = this._replacePromptVariables(content, selectedTextContext);
-        await deliverPromptContent(promptName, processed, deliveryOptions);
-        return;
-      }
-    }
 
     // 如果有 inlinePromptContent
     if (selectedTextContext.inlinePromptContent) {

@@ -6,6 +6,7 @@ import { MarkdownPromptMetadataCompletionProvider } from "./providers/MarkdownPr
 import { PromptTreeProvider } from "./providers/PromptTreeProvider";
 import {
   deliverPromptContent,
+  getDocumentPromptDeliveryOptions,
   parsePromptDeliveryTarget,
   parsePromptOutputMode,
   prefillActiveTerminal,
@@ -16,7 +17,6 @@ import {
 import {
   getPromptDirectoryPath,
   getPromptDirectorySetting,
-  resolvePromptFilePath,
 } from "./services/PromptDirectoryService";
 import {
   getSelectedTextVariableContext,
@@ -33,6 +33,8 @@ import {
 import { parseMarkdownMetaDocument } from "./services/MarkdownMetaParserService";
 import { PromptFlowWebviewProvider } from "./webview/PromptFlowWebviewProvider";
 import { resolveSelectionPathTemplates } from "./services/SelectionPathTemplateService";
+import { resolveSelectionVariables } from "./services/SelectionVariableService";
+import { getMarkdownSections } from "./services/MarkdownSectionService";
 
 let treeProvider: PromptTreeProvider;
 
@@ -93,7 +95,7 @@ function parsePromptMetadataDeliveryTarget(
 
   if (!deliveryTarget && normalizedValue) {
     throw new Error(
-      `Invalid Prompto deliveryTarget: ${normalizedValue}. Use githubCopilotChat or claudeCode.`
+      `Invalid Prompto deliveryTarget: ${normalizedValue}. Use githubCopilotChat, qoder or claudeCode.`
     );
   }
 
@@ -126,10 +128,12 @@ function mergePromptDeliveryOptions(
   const deliveryTarget =
     executionContextDeliveryOptions.deliveryTarget ??
     promptFileDeliveryOptions.deliveryTarget;
+  const chatSession = executionContextDeliveryOptions.chatSession ?? promptFileDeliveryOptions.chatSession;
 
   return {
     outputMode,
     deliveryTarget,
+    ...(chatSession ? { chatSession } : {}),
   };
 }
 
@@ -183,6 +187,35 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   registerCommands(context);
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(updateSectionContext),
+    vscode.window.onDidChangeTextEditorSelection(event => updateSectionContext(event.textEditor)),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor?.document === event.document) {
+        updateSectionContext(editor);
+      }
+    })
+  );
+  updateSectionContext(vscode.window.activeTextEditor);
+}
+
+function updateSectionContext(editor: vscode.TextEditor | undefined): void {
+  if (editor !== vscode.window.activeTextEditor) {
+    return;
+  }
+  let available = false;
+  try {
+    if (editor?.document.languageId === "markdown" && editor.selection.isEmpty) {
+      const line = editor.selection.active.line;
+      available = getMarkdownSections(getDocumentLines(editor.document)).some(section =>
+        line >= section.line && line < section.endLine);
+    }
+  } catch {
+    available = false;
+  }
+  void vscode.commands.executeCommand("setContext", "prompto.sectionAvailable", available);
 }
 
 export function deactivate() {
@@ -232,6 +265,21 @@ function registerCommands(context: vscode.ExtensionContext) {
     ),
 
     vscode.commands.registerCommand(
+      "prompto.runMarkdownSection",
+      async (documentUri: vscode.Uri, headingLine: number, outputMode: PromptOutputMode) => {
+        try {
+          if (!parsePromptOutputMode(outputMode)) {
+            throw new Error("Invalid section output mode.");
+          }
+          const document = await vscode.workspace.openTextDocument(documentUri);
+          await sendSelectionToChat(outputMode, { document, headingLine });
+        } catch (error) {
+          vscode.window.showErrorMessage(`Cannot run section: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    ),
+
+    vscode.commands.registerCommand(
       "prompto.addPrompt",
       async (categoryPath?: string) => {
         await showAddPromptDialog(categoryPath);
@@ -271,16 +319,6 @@ async function showPromptPicker(
   try {
     const selectedTextContext =
       executionContext.selectedTextContext ?? getSelectedTextVariableContext();
-
-    if (
-      selectedTextContext.promptReference &&
-      selectedTextContext.inlinePromptContent
-    ) {
-      vscode.window.showErrorMessage(
-        "Prompto metadata cannot define both prompt and promptContent."
-      );
-      return;
-    }
 
     if (selectedTextContext.inlinePromptContent) {
       await executePromptContent(
@@ -325,56 +363,6 @@ async function showPromptPicker(
       }
 
       return;
-    }
-
-    if (selectedTextContext.promptReference) {
-      const resolvedPromptPath = resolvePromptFilePath(
-        workspaceFolder,
-        selectedTextContext.promptReference
-      );
-
-      if (!resolvedPromptPath) {
-        const action = await vscode.window.showErrorMessage(
-          `Invalid prompt reference: ${selectedTextContext.promptReference}`,
-          "Choose Prompt"
-        );
-
-        if (action !== "Choose Prompt") {
-          return;
-        }
-        executionContext = {
-          ...executionContext,
-          workspaceFolder,
-          selectedTextContext: {
-            ...selectedTextContext,
-            promptReference: undefined,
-          },
-        };
-      } else if (!fs.existsSync(resolvedPromptPath)) {
-        const action = await vscode.window.showErrorMessage(
-          `Prompt file not found: ${selectedTextContext.promptReference}`,
-          "Choose Prompt"
-        );
-
-        if (action !== "Choose Prompt") {
-          return;
-        }
-        executionContext = {
-          ...executionContext,
-          workspaceFolder,
-          selectedTextContext: {
-            ...selectedTextContext,
-            promptReference: undefined,
-          },
-        };
-      } else {
-        await usePrompt(resolvedPromptPath, {
-          ...executionContext,
-          workspaceFolder,
-          selectedTextContext,
-        });
-        return;
-      }
     }
 
     await navigatePromptDirectoryWithGlobalSearch(
@@ -552,6 +540,7 @@ function parsePromptFileMetadata(lines: string[]):
       endLine: number;
       outputMode?: string;
       deliveryTarget?: string;
+      chatSession?: PromptDeliveryOptions["chatSession"];
     }
   | undefined {
   let metadataStartLine = 0;
@@ -595,6 +584,7 @@ function parsePromptFileMetadata(lines: string[]):
     endLine: metadataEndLine,
     outputMode: prompto?.outputMode,
     deliveryTarget: prompto?.deliveryTarget,
+    chatSession: prompto?.chatSession,
   };
 }
 
@@ -639,6 +629,7 @@ function getPromptFile(
     deliveryOptions: {
       outputMode: parsePromptMetadataOutputMode(metadata?.outputMode),
       deliveryTarget: parsePromptMetadataDeliveryTarget(metadata?.deliveryTarget),
+      ...(metadata?.chatSession ? { chatSession: metadata.chatSession } : {}),
     },
   };
 }
@@ -895,10 +886,11 @@ async function runMarkdownPromptBlock(
 
     const lines = getDocumentLines(sourceDocument);
     const prompto = findPromptoMetaForHeading(lines, headingLine);
+    const documentDelivery = getDocumentPromptDeliveryOptions(lines);
 
-    if (!prompto) {
+    if (!prompto?.promptContent) {
       vscode.window.showErrorMessage(
-        "Prompto block not found. Try saving the file or reopening the editor."
+        "Inline promptContent not found for this md-meta block."
       );
       return;
     }
@@ -907,10 +899,11 @@ async function runMarkdownPromptBlock(
       promptName: getHeadingText(lines, headingLine),
       sourceDocument,
       deliveryOptions: {
-        outputMode: parsePromptMetadataOutputMode(prompto.outputMode),
+        ...documentDelivery,
+        outputMode: parsePromptMetadataOutputMode(prompto.outputMode) ?? documentDelivery.outputMode,
         deliveryTarget: parsePromptMetadataDeliveryTarget(
           prompto.deliveryTarget
-        ),
+        ) ?? documentDelivery.deliveryTarget,
       },
       workspaceFolder,
       selectedTextContext: buildSelectedTextContextFromPrompto(
@@ -936,10 +929,11 @@ async function runMarkdownPromptAction(
 
     const lines = getDocumentLines(sourceDocument);
     const prompto = findPromptoMetaForAction(lines, anchorLine);
+    const documentDelivery = getDocumentPromptDeliveryOptions(lines);
 
-    if (!prompto) {
+    if (!prompto?.promptContent) {
       vscode.window.showErrorMessage(
-        "Prompto action not found. Try saving the file or reopening the editor."
+        "Inline promptContent not found for this md-meta action."
       );
       return;
     }
@@ -948,10 +942,11 @@ async function runMarkdownPromptAction(
       promptName: prompto.title || "Prompto Action",
       sourceDocument,
       deliveryOptions: {
-        outputMode: parsePromptMetadataOutputMode(prompto.outputMode),
+        ...documentDelivery,
+        outputMode: parsePromptMetadataOutputMode(prompto.outputMode) ?? documentDelivery.outputMode,
         deliveryTarget: parsePromptMetadataDeliveryTarget(
           prompto.deliveryTarget
-        ),
+        ) ?? documentDelivery.deliveryTarget,
       },
       suppressNoSelectedTextPrompt: true,
       workspaceFolder,
@@ -963,26 +958,82 @@ async function runMarkdownPromptAction(
 }
 
 async function sendSelectionToChat(
-  outputMode: PromptOutputMode
+  outputMode: PromptOutputMode,
+  sectionSource?: { document: vscode.TextDocument; headingLine: number }
 ): Promise<void> {
   const editor = vscode.window.activeTextEditor;
-  if (!editor) {
+  const document = sectionSource?.document ?? editor?.document;
+  if (!document) {
     vscode.window.showErrorMessage("No active editor found.");
     return;
   }
 
-  const selectedText = editor.document.getText(editor.selection).trim();
-  if (!selectedText) {
-    vscode.window.showErrorMessage("No text selected.");
-    return;
-  }
-
+  let promptName = "Selection";
   let processedText: string;
+  let deliveryOptions: PromptDeliveryOptions = { outputMode };
   try {
-    processedText = resolveSelectionPathTemplates(
+    deliveryOptions = {
+      ...(document.languageId === "markdown" ? getDocumentPromptDeliveryOptions(getDocumentLines(document)) : {}),
+      outputMode,
+    };
+    let selectedText: string;
+    if (sectionSource || editor!.selection.isEmpty) {
+      const sections = document.languageId === "markdown"
+        ? getMarkdownSections(getDocumentLines(document))
+        : [];
+      const line = sectionSource?.headingLine ?? editor!.selection.active.line;
+      const section = sectionSource
+        ? sections.find(item => item.line === line)
+        : sections.filter(item => line >= item.line && line < item.endLine).pop();
+      if (!section) {
+        vscode.window.showErrorMessage("No executable section here. Enable document-level prompto.sectionLevels or select text.");
+        return;
+      }
+      selectedText = section.content;
+      promptName = section.title;
+    } else {
+      selectedText = document.getText(editor!.selection).trim();
+    }
+    if (!selectedText) {
+      vscode.window.showErrorMessage(sectionSource || editor?.selection.isEmpty ? "This section has no content to deliver." : "No text selected.");
+      return;
+    }
+    const renderedText = await resolveSelectionVariables(
       selectedText,
-      editor.document.isUntitled ? undefined : editor.document.uri.fsPath
+      document.getText(),
+      path.basename(document.fileName),
+      async name => vscode.window.showInputBox({
+        title: `Variable: ${name}`,
+        prompt: `Enter a value for {{${name}}}. Used for this delivery only.`,
+      }),
+      content => resolveSelectionPathTemplates(
+        content,
+        document.isUntitled ? undefined : document.uri.fsPath,
+        document.isUntitled
+          ? undefined
+          : vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+      ),
+      async reference => {
+        if (document.isUntitled) {
+          throw new Error("Save the source document before loading a shared context.");
+        }
+        const contextPath = resolveSelectionPathTemplates(
+          `{{path:${reference}}}`,
+          document.uri.fsPath,
+          vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+        );
+        const contextDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(contextPath));
+        return contextDocument.getText();
+      }
     );
+    if (renderedText === null) {
+      return;
+    }
+    processedText = renderedText;
+    if (!processedText.trim()) {
+      vscode.window.showInformationMessage("No content to deliver after evaluating the template.");
+      return;
+    }
   } catch (error) {
     vscode.window.showErrorMessage(
       `Cannot process selection: ${error instanceof Error ? error.message : String(error)}`
@@ -990,15 +1041,14 @@ async function sendSelectionToChat(
     return;
   }
 
-  const deliveryOptions: PromptDeliveryOptions = { outputMode };
   if (outputMode === "clipboard") {
     deliveryOptions.clipboardFeedback = "statusBar";
   } else {
     const deliveryTarget =
-      vscode.workspace.getConfiguration("prompto").get<string>("deliveryTarget") ??
+      deliveryOptions.deliveryTarget ?? vscode.workspace.getConfiguration("prompto").get<string>("deliveryTarget") ??
       "githubCopilotChat";
     deliveryOptions.deliveryTarget = parsePromptDeliveryTarget(deliveryTarget);
   }
 
-  await deliverPromptContent("Selection", processedText, deliveryOptions);
+  await deliverPromptContent(promptName, processedText, deliveryOptions);
 }

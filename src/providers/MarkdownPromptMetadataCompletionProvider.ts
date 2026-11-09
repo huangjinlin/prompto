@@ -49,6 +49,11 @@ const DELIVERY_TARGET_VALUES = [
     documentation: "Deliver the prompt to GitHub Copilot Chat.",
   },
   {
+    label: "qoder",
+    detail: "Qoder CN task",
+    documentation: "Deliver to an existing Qoder CN task. Requires document chatSession.workspace and chatSession.title.",
+  },
+  {
     label: "claudeCode",
     detail: "Claude Code",
     documentation: "Deliver the prompt to the active terminal, intended for Claude Code.",
@@ -98,10 +103,28 @@ const MD_META_ROOT_KEYS: PromptMetadataKeyDefinition[] = [
 
 const MD_META_PROMPTO_KEYS: PromptMetadataKeyDefinition[] = [
   {
-    label: "prompt",
-    detail: "Reference a saved prompt file",
-    documentation: "Resolves a prompt markdown file from the configured prompts directory.",
-    insertText: new vscode.SnippetString("prompt: ${1:review/code-review}"),
+    label: "chatSession",
+    detail: "Existing chat session or task",
+    documentation: "Document scope only. Exact existing title; Qoder also requires workspace. Requires desktop authorization; Copilot desktop input requires screen reader support.",
+    insertText: new vscode.SnippetString("chatSession:\n\ttitle: ${1:Session title}"),
+  },
+  {
+    label: "sectionLevels",
+    detail: "Executable document sections",
+    documentation: "Document scope only. Heading levels 1-6 expose send, prefill, and copy actions. For example, [1] enables top-level tasks; [] disables section execution.",
+    insertText: new vscode.SnippetString("sectionLevels: [${1:1}]"),
+  },
+  {
+    label: "context",
+    detail: "Shared selection variables",
+    documentation: "One shared Markdown context. / resolves from the source workspace; ./ and ../ resolve from the source document. Local vars override shared values.",
+    insertText: new vscode.SnippetString("context: ${1:/.prompto/contexts/quality.md}"),
+  },
+  {
+    label: "vars",
+    detail: "Custom template variables",
+    documentation: "String leaves in flat or nested mappings, referenced as {{name}} or {{module.name}}. Use scope: document for selection-wide variables; selectedText and fileName are reserved.",
+    insertText: new vscode.SnippetString("vars:\n\t${1:taskName}: ${2:Task name}"),
   },
   {
     label: "promptContent",
@@ -127,6 +150,11 @@ const MD_META_PROMPTO_KEYS: PromptMetadataKeyDefinition[] = [
     documentation: "Display title for action-scope prompts.",
     insertText: new vscode.SnippetString("title: ${1:Action Title}"),
   },
+];
+
+const MD_META_CHAT_SESSION_KEYS: PromptMetadataKeyDefinition[] = [
+  { label: "title", detail: "Exact session or task title", documentation: "Required single-line literal title of an existing session or task.", insertText: new vscode.SnippetString("title: ${1:Session title}") },
+  { label: "workspace", detail: "Qoder workspace name", documentation: "Required for Qoder only. Exact workspace name inside Qoder, not the VS Code source workspace.", insertText: new vscode.SnippetString("workspace: ${1:Workspace name}") },
 ];
 
 const MD_META_FLOW_KEYS: PromptMetadataKeyDefinition[] = [
@@ -551,9 +579,10 @@ function getMdMetaKeysForIndent(
 
     // 找到父级缩进的 key
     if (lineIndent < currentIndent && trimmed) {
-      const nsMatch = trimmed.match(/^(prompto|flow|outline|defaults)\s*:/);
+      const nsMatch = trimmed.match(/^(prompto|flow|outline|defaults|chatSession)\s*:/);
       if (nsMatch) {
         const ns = nsMatch[1];
+        if (ns === "chatSession") return MD_META_CHAT_SESSION_KEYS;
         if (ns === "prompto" || ns === "defaults") {
           return MD_META_PROMPTO_KEYS;
         }

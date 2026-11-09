@@ -83,7 +83,7 @@
 - 归一化 JSON 只存原始解析结果，不含 defaults 合并
 - 合并逻辑由各消费层自行实现
 - line 使用 0-based 行号
-- 冲突诊断使用 `_resolved.conflict` 和 `_resolved.chosen` 标记
+- 历史约定：冲突诊断曾使用 `_resolved.conflict` 和 `_resolved.chosen` 标记。现已移除 `prompt` 文件引用及冲突处理，上述 10/14 冲突样例不再作为现行验收依据。
 
 完成标准：
 

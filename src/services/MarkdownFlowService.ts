@@ -14,7 +14,6 @@ export interface FlowNodePrompto {
   title: string;
   line: number;
   isAction: boolean;
-  prompt?: string;
   promptContent?: string;
   deliveryTarget?: string;
   outputMode?: string;
@@ -344,12 +343,11 @@ function collectPromptoItems(doc: MarkdownMetaDocument, node: NodeMeta): FlowNod
 
   // 主 prompto（节点级）
   const nodePrompto = node.namespaces.prompto;
-  if (nodePrompto && (nodePrompto.prompt || nodePrompto.promptContent)) {
+  if (nodePrompto?.promptContent) {
     items.push({
       title: node.title,
       line: node.line,
       isAction: false,
-      prompt: nodePrompto.prompt,
       promptContent: nodePrompto.promptContent,
       deliveryTarget: nodePrompto.deliveryTarget,
       outputMode: nodePrompto.outputMode,
@@ -369,12 +367,11 @@ function collectPromptoItems(doc: MarkdownMetaDocument, node: NodeMeta): FlowNod
   for (const action of doc.actions) {
     if (action.line > node.line && action.line < rangeEnd) {
       const actionPrompto = action.namespaces.prompto;
-      if (actionPrompto) {
+      if (actionPrompto?.promptContent) {
         items.push({
           title: actionPrompto.title || "Action",
           line: action.line,
           isAction: true,
-          prompt: actionPrompto.prompt,
           promptContent: actionPrompto.promptContent,
           deliveryTarget: actionPrompto.deliveryTarget,
           outputMode: actionPrompto.outputMode,

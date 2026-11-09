@@ -77,7 +77,6 @@ export function buildSelectedTextContextFromPrompto(
   rawSelectedText: string;
   selectedText: string;
   variables: Record<string, string>;
-  promptReference?: string;
   inlinePromptContent?: string;
 } {
   const selectedText = body || "";
@@ -102,7 +101,6 @@ export function buildSelectedTextContextFromPrompto(
     rawSelectedText: selectedText,
     selectedText,
     variables,
-    promptReference: prompto.prompt,
     inlinePromptContent: prompto.promptContent,
   };
 }

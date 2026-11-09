@@ -94,7 +94,9 @@ flow:
   kind: action
   next: report.finish
 prompto:
-  prompt: 检查日报/检查日报(有交易)
+  promptContent: |
+    请检查以下有交易日的日报和偏差记录，列出问题与建议：
+    {{selectedText}}
 outline:
   status: done
 -->
@@ -110,7 +112,9 @@ flow:
   kind:  action
   next: report.finish
 prompto:
-  prompt: 检查日报/检查日报(无交易)
+  promptContent: |
+    请检查以下无交易日的日报记录，列出问题与建议：
+    {{selectedText}}
 outline:
   status: todo
 -->

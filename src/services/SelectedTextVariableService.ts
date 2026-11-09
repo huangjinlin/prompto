@@ -4,7 +4,6 @@ export interface SelectedTextVariableContext {
   rawSelectedText: string;
   selectedText: string;
   variables: Record<string, string>;
-  promptReference?: string;
   inlinePromptContent?: string;
 }
 
@@ -30,7 +29,6 @@ export function parseSelectedTextVariableContext(
       rawSelectedText,
       selectedText: normalizedSelection,
       variables: {},
-      promptReference: undefined,
       inlinePromptContent: undefined,
     };
   }
@@ -44,7 +42,6 @@ export function parseSelectedTextVariableContext(
       rawSelectedText,
       selectedText: normalizedSelection,
       variables: {},
-      promptReference: undefined,
       inlinePromptContent: undefined,
     };
   }
@@ -63,7 +60,6 @@ export function parseSelectedTextVariableContext(
         rawSelectedText,
         selectedText: normalizedSelection,
         variables: {},
-        promptReference: undefined,
         inlinePromptContent: undefined,
       };
     }
@@ -77,16 +73,10 @@ export function parseSelectedTextVariableContext(
     selectedText = selectedText.slice(1);
   }
 
-  const promptReference = variables.prompt?.trim() || undefined;
-  if (promptReference) {
-    delete variables.prompt;
-  }
-
   return {
     rawSelectedText,
     selectedText,
     variables,
-    promptReference,
     inlinePromptContent: undefined,
   };
 }

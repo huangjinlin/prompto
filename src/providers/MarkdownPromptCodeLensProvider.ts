@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { parseMarkdownMetaDocument } from "../services/MarkdownMetaParserService";
 import { getDocumentLines } from "../services/MarkdownMetaBridgeService";
+import { getMarkdownSections } from "../services/MarkdownSectionService";
 
 export class MarkdownPromptCodeLensProvider implements vscode.CodeLensProvider {
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
@@ -10,18 +11,13 @@ export class MarkdownPromptCodeLensProvider implements vscode.CodeLensProvider {
     const mdMetaNodeLenses: vscode.CodeLens[] = metaDoc.nodes
       .filter((node) => {
         const prompto = node.namespaces.prompto;
-        return Boolean(prompto && (prompto.prompt || prompto.promptContent));
+        return Boolean(prompto?.promptContent);
       })
       .map((node) => {
-        const prompto = node.namespaces.prompto!;
-        const title = prompto.prompt || prompto.promptContent
-          ? "Run Prompto"
-          : "Choose Prompt";
-
         return new vscode.CodeLens(
           new vscode.Range(node.line, 0, node.line, 0),
           {
-            title,
+            title: "Run Prompto",
             command: "prompto.runMarkdownBlock",
             arguments: [document.uri, node.line],
           }
@@ -31,7 +27,7 @@ export class MarkdownPromptCodeLensProvider implements vscode.CodeLensProvider {
     const mdMetaActionLenses: vscode.CodeLens[] = metaDoc.actions
       .filter((action) => {
         const prompto = action.namespaces.prompto;
-        return Boolean(prompto && prompto.title);
+        return Boolean(prompto?.title && prompto.promptContent);
       })
       .map((action) => {
         return new vscode.CodeLens(
@@ -44,7 +40,22 @@ export class MarkdownPromptCodeLensProvider implements vscode.CodeLensProvider {
         );
       });
 
-    return [...mdMetaNodeLenses, ...mdMetaActionLenses].sort(
+    const sectionLenses = getMarkdownSections(lines, metaDoc).flatMap(section =>
+      [
+        { title: "发送到聊天", mode: "chatSubmit" },
+        { title: "预填到聊天", mode: "chatPrefill" },
+        { title: "复制", mode: "clipboard" },
+      ].map(action => new vscode.CodeLens(
+        new vscode.Range(section.line, 0, section.line, 0),
+        {
+          title: action.title,
+          command: "prompto.runMarkdownSection",
+          arguments: [document.uri, section.line, action.mode],
+        }
+      ))
+    );
+
+    return [...mdMetaNodeLenses, ...mdMetaActionLenses, ...sectionLenses].sort(
       (left, right) => left.range.start.line - right.range.start.line
     );
   }

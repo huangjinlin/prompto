@@ -5,21 +5,22 @@
 
 export type MetaScope = "document" | "node" | "action";
 
+export interface PromptChatSession {
+  title: string;
+  workspace?: string;
+}
+
 // ── 标准命名空间类型 ──
 
 export interface PromptoMeta {
-  prompt?: string;
   promptContent?: string;
   deliveryTarget?: string;
   outputMode?: string;
   title?: string;
+  context?: string;
   vars?: Record<string, string>;
-  _resolved?: PromptoConflictResolution;
-}
-
-export interface PromptoConflictResolution {
-  conflict: string;
-  chosen: string;
+  sectionLevels?: number[];
+  chatSession?: PromptChatSession;
 }
 
 export interface FlowBranch {

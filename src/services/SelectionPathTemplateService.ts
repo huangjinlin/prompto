@@ -2,7 +2,8 @@ import * as path from "path";
 
 export function resolveSelectionPathTemplates(
   content: string,
-  sourceFilePath?: string
+  sourceFilePath?: string,
+  workspaceRootPath?: string
 ): string {
   const processedContent = content.replace(
     /\{\{path:([^{}]*)\}\}/g,
@@ -22,7 +23,20 @@ export function resolveSelectionPathTemplates(
       }
 
       let resolvedPath: string;
-      if (path.isAbsolute(filePath)) {
+      if (/^\/(?![\\/])/.test(filePath)) {
+        if (!workspaceRootPath) {
+          throw new Error("Workspace-root paths require a saved document inside a workspace folder.");
+        }
+        resolvedPath = path.resolve(workspaceRootPath, filePath.slice(1));
+        const relativePath = path.relative(workspaceRootPath, resolvedPath);
+        if (
+          relativePath === ".." ||
+          relativePath.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relativePath)
+        ) {
+          throw new Error("Workspace-root paths cannot escape the workspace folder.");
+        }
+      } else if (path.isAbsolute(filePath)) {
         resolvedPath = path.normalize(filePath);
       } else {
         if (!sourceFilePath) {

@@ -110,7 +110,9 @@ flow:
   kind: action
   next: report.finish
 prompto:
-  prompt: review/check-trade-day
+  promptContent: |
+    请检查有交易日的日报：
+    {{selectedText}}
 outline:
   status: doing
 -->
@@ -273,22 +275,30 @@ outline:
 
 | 字段 | 类型 | 作用域 | 说明 |
 | --- | --- | --- | --- |
-| `prompt` | string | node, action | 已保存 prompt 文件的引用 |
 | `promptContent` | string | node, action | 内联 prompt 内容 |
-| `deliveryTarget` | string | document, node, action | 投放目标，如 `githubCopilotChat` |
+| `deliveryTarget` | string | document, node, action | `githubCopilotChat`、`qoder`、`claudeCode` |
 | `outputMode` | string | document, node, action | `chatPrefill`、`chatSubmit`、`clipboard` |
 | `title` | string | action | 动作作用域展示标题 |
+| `sectionLevels` | number[] | document | 显式开启章节执行，例如 `[1]`；只允许整数 1-6，空数组或省略表示关闭 |
+| `chatSession` | object | document | 指定现有会话；Copilot 使用 `title`，Qoder 必须提供 `workspace` 和 `title` |
 
 规则如下：
 
-- `prompt` 与 `promptContent` 不应在同一作用域同时出现
+- 显式内联节点必须提供 `promptContent`，不支持通过 `prompt` 引用文件
 - `title` 推荐用于动作作用域，在标题节点作用域中可被忽略
+- 章节执行由文档级 `prompto.sectionLevels` 单独开启：处理标题之后到下一个同级或更高级标题之前的正文，保留子标题，排除实际元信息块。代码围栏和 HTML 注释内的标题不参与分段
+- 章节发送、预填、复制复用选区渲染链路；已有选区优先，无选区时执行光标所在的最近可执行章节。已有内联 `promptContent` 的标题不再显示重复的章节入口
+- `chatSession` 禁止放在节点、动作或 `defaults` 中；字段必须是非空单行字面量，不支持模板和未知字段。Qoder 的 `workspace` 指软件内部的工作区名称，不是 VS Code 源文档工作区
+- 文档会话定位传递给选区、章节、提示词文件和内联执行；节点/动作覆盖目标或模式后，最终目标与会话配置不兼容时在桌面操作前报错。Copilot 不接受 `workspace`，Claude Code 不支持指定会话；复制模式不操作桌面
+- Qoder 通过唯一可见任务链接和聊天区活动标题确认目标，逐行输入及显式换行后精确回读；发送只执行一次，不确定时不重发。当前只支持本地 Windows 的已验证中文界面，完整配置和限制见 README
 
 示例：
 
 ```yaml
 prompto:
-  prompt: review/check-trade-day
+  promptContent: |
+    请检查有交易日的日报：
+    {{selectedText}}
   deliveryTarget: githubCopilotChat
   outputMode: chatSubmit
 ```
@@ -379,7 +389,7 @@ outline:
 - 内容是否符合支持的 YAML 子集
 - `version` 是否存在且受支持
 - 同一锚点是否定义了多个相互竞争的宿主块
-- `prompto.prompt` 与 `prompto.promptContent` 是否同时存在（应报诊断警告）
+- 可执行节点是否提供 `prompto.promptContent`，动作是否同时提供 `prompto.title`
 - 在具备全文件视图时，`flow.entry`、`flow.next`、`flow.branches[*].to` 是否能解析到合法节点
 
 当环境允许时，校验失败应尽量以诊断形式呈现给用户。
@@ -439,7 +449,9 @@ flow:
   kind: action
   next: report.finish
 prompto:
-  prompt: review/check-trade-day
+  promptContent: |
+    请检查有交易日的日报：
+    {{selectedText}}
 outline:
   status: done
 -->
@@ -454,7 +466,9 @@ flow:
   kind: action
   next: report.finish
 prompto:
-  prompt: review/check-no-trade-day
+  promptContent: |
+    请检查无交易日的日报：
+    {{selectedText}}
 -->
 1. 检查日报。
 
@@ -485,8 +499,8 @@ outline:
 - 保留根字段：`version`、`scope`、`defaults`
 - 标准命名空间：`prompto`、`flow`、`outline`
 - 后续新增命名空间：走自定义命名空间规则（小写 kebab-case，消费方忽略不认识的）
-- prompto 字段：`prompt`、`promptContent`、`deliveryTarget`、`outputMode`、`title`
-- prompto 互斥规则：`prompt` 与 `promptContent` 不应同时出现
+- prompto 执行字段：`promptContent`、`deliveryTarget`、`outputMode`、`title`；文档变量与共享上下文见 README
+- 后续修订：移除 `prompt` 文件引用，仅保留内联 `promptContent`
 - flow 分支结构：采用 YAML 数组对象 `[{label, to}]`
 - flow 消费顺序：`branches` 优先于 `next`
 - outline v1 字段：仅 `status`，后续扩展走 v2

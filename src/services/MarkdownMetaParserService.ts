@@ -5,6 +5,7 @@
  */
 
 import { parseYamlSubset } from "./MarkdownYamlParserService";
+import { flattenVariableDefinitions } from "./VariableNamespaceService";
 import type {
   ActionMeta,
   DocumentMeta,
@@ -22,7 +23,7 @@ import type {
 const MD_META_START = /^\s*<!--\s*md-meta\s*$/;
 const COMMENT_END = /^\s*-->\s*$/;
 const HEADING = /^(#{1,6})\s+(.+?)\s*$/;
-const CODE_FENCE = /^\s*(`{3,}|~{3,})/;
+const CODE_FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 // ── 主入口 ──
 
@@ -38,6 +39,7 @@ export function parseMarkdownMetaDocument(
 
   let inCodeFence = false;
   let activeFenceMarker: string | undefined;
+  let activeFenceLength = 0;
   let lastHeading: { title: string; level: number; line: number } | undefined;
   let seenMetaBlock = false;
 
@@ -51,13 +53,26 @@ export function parseMarkdownMetaDocument(
       if (!inCodeFence) {
         inCodeFence = true;
         activeFenceMarker = marker;
-      } else if (activeFenceMarker === marker) {
+        activeFenceLength = fenceMatch[1].length;
+      } else if (activeFenceMarker === marker && fenceMatch[1].length >= activeFenceLength && !fenceMatch[2].trim()) {
         inCodeFence = false;
         activeFenceMarker = undefined;
       }
       continue;
     }
     if (inCodeFence) {
+      continue;
+    }
+
+    if (/^\s*<!--/.test(line) && !MD_META_START.test(line)) {
+      if (!line.slice(line.indexOf("<!--") + 4).includes("-->")) {
+        while (i + 1 < lines.length) {
+          i++;
+          if (lines[i].includes("-->")) {
+            break;
+          }
+        }
+      }
       continue;
     }
 
@@ -120,9 +135,16 @@ function processMdMetaBlock(
   const isDocumentScope =
     scope === "document" || (!scope && !lastHeading);
 
+  if (!isDocumentScope && namespaces.prompto?.chatSession) {
+    throw new Error("Prompto chatSession is only supported at document scope.");
+  }
+
   if (isDocumentScope) {
     if (defaults) {
       doc.document.defaults = parseNamespaceBag(defaults);
+      if (doc.document.defaults.prompto?.chatSession) {
+        throw new Error("Use document prompto.chatSession, not defaults.prompto.chatSession.");
+      }
     }
     doc.document.namespaces = namespaces;
     return;
@@ -191,9 +213,6 @@ function extractNamespaces(root: Record<string, unknown>): NamespaceBag {
 function parsePromptoMeta(obj: Record<string, unknown>): PromptoMeta {
   const meta: PromptoMeta = {};
 
-  if (typeof obj.prompt === "string") {
-    meta.prompt = obj.prompt;
-  }
   if (typeof obj.promptContent === "string") {
     meta.promptContent = obj.promptContent;
   }
@@ -207,25 +226,47 @@ function parsePromptoMeta(obj: Record<string, unknown>): PromptoMeta {
     meta.title = obj.title;
   }
 
-  // 提取自定义变量（vars 子结构）
-  if (obj.vars && typeof obj.vars === "object" && !Array.isArray(obj.vars)) {
-    const vars: Record<string, string> = {};
-    for (const [key, value] of Object.entries(obj.vars as Record<string, unknown>)) {
-      if (typeof value === "string") {
-        vars[key] = value;
-      }
+  if (Object.prototype.hasOwnProperty.call(obj, "chatSession")) {
+    const session = obj.chatSession;
+    if (!session || typeof session !== "object" || Array.isArray(session)) {
+      throw new Error("Prompto chatSession must contain a literal title.");
     }
-    if (Object.keys(vars).length > 0) {
-      meta.vars = vars;
+    const fields = session as Record<string, unknown>;
+    if (Object.keys(fields).some(key => key !== "title" && key !== "workspace") ||
+        typeof fields.title !== "string" || !fields.title.trim() ||
+        /[\u0000-\u001f\u007f{}]/.test(fields.title) ||
+        (Object.prototype.hasOwnProperty.call(fields, "workspace") &&
+          (typeof fields.workspace !== "string" || !fields.workspace.trim() || /[\u0000-\u001f\u007f{}]/.test(fields.workspace)))) {
+      throw new Error("Prompto chatSession.title and optional workspace must be non-empty, single-line literals.");
     }
+    meta.chatSession = { title: fields.title.trim(), ...(typeof fields.workspace === "string" ? { workspace: fields.workspace.trim() } : {}) };
   }
 
-  // 冲突检测
-  if (meta.prompt && meta.promptContent) {
-    meta._resolved = {
-      conflict: "prompt-vs-promptContent",
-      chosen: "promptContent",
-    };
+  if (Object.prototype.hasOwnProperty.call(obj, "sectionLevels")) {
+    let levels: unknown = obj.sectionLevels;
+    if (typeof levels === "string") {
+      try {
+        levels = JSON.parse(levels);
+      } catch {
+        throw new Error("Prompto sectionLevels must be an array of heading levels from 1 to 6.");
+      }
+    }
+    if (!Array.isArray(levels) || levels.some(level => !Number.isInteger(level) || level < 1 || level > 6)) {
+      throw new Error("Prompto sectionLevels must be an array of heading levels from 1 to 6.");
+    }
+    meta.sectionLevels = [...new Set<number>(levels)];
+  }
+
+  if (Object.prototype.hasOwnProperty.call(obj, "context")) {
+    if (typeof obj.context !== "string" || !obj.context.trim() || /[{}\r\n\0]/.test(obj.context)) {
+      throw new Error("Prompto context must be a non-empty, single-line literal file path.");
+    }
+    meta.context = obj.context.trim();
+  }
+
+  // 提取自定义变量（vars 子结构）
+  if (Object.prototype.hasOwnProperty.call(obj, "vars")) {
+    meta.vars = flattenVariableDefinitions(obj.vars);
   }
 
   return meta;

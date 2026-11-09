@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.19",
+  "version": "1.0.28",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -160,18 +160,36 @@
         "command": "prompto.sendSelectionToChat",
         "key": "ctrl+enter",
         "mac": "cmd+enter",
-        "when": "editorHasSelection && editorLangId == markdown"
+        "when": "editorTextFocus && editorLangId == markdown && (editorHasSelection || prompto.sectionAvailable)"
       },
       {
         "command": "prompto.prefillSelectionToChat",
-        "key": "ctrl+space",
-        "mac": "cmd+space",
-        "when": "editorHasSelection && editorLangId == markdown"
+        "key": "alt+enter",
+        "mac": "alt+enter",
+        "when": "editorTextFocus && editorLangId == markdown && (editorHasSelection || prompto.sectionAvailable)"
+      },
+      {
+        "command": "prompto.copySelectionToClipboard",
+        "key": "shift+enter",
+        "mac": "shift+enter",
+        "when": "editorTextFocus && editorLangId == markdown && (editorHasSelection || prompto.sectionAvailable)"
       }
     ],
     "configuration": {
       "title": "Prompto",
       "properties": {
+        "prompto.desktop.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "Named Copilot session and Qoder CN task delivery on local Windows, enabled by default. Requires agent-desktop and an explicit desktop-operation authorization. Copilot uses the VS Code chat API for an already-active exact session; other sessions require desktop input and screen reader support. Qoder requires chatSession.workspace and title, and uses verified multiline desktop input. Existing drafts are replaced. No automatic retry."
+        },
+        "prompto.desktop.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Optional absolute path to the native agent-desktop `.exe`, not the npm `.cmd` or `.ps1` shim. Empty searches PATH and global npm installation directories."
+        },
         "prompto.outputMode": {
           "type": "string",
           "default": "chatPrefill",
@@ -192,10 +210,12 @@
           "default": "githubCopilotChat",
           "enum": [
             "githubCopilotChat",
+            "qoder",
             "claudeCode"
           ],
           "enumDescriptions": [
             "Deliver prompts to GitHub Copilot Chat.",
+            "Deliver prompts to an existing Qoder CN task selected by document chatSession.workspace and title.",
             "Deliver prompts to the active terminal, intended for Claude Code."
           ],
           "markdownDescription": "Selects which chat surface receives prompts when **Prompto: Use Prompt** runs. Prompt metadata can override this with `deliveryTarget`."
@@ -218,13 +238,13 @@
     "package": "vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "1.74.0",
     "@types/node": "16.x",
+    "@types/vscode": "1.74.0",
     "@typescript-eslint/eslint-plugin": "5.45.0",
     "@typescript-eslint/parser": "5.45.0",
+    "@vscode/test-electron": "2.2.0",
     "eslint": "8.28.0",
     "typescript": "4.9.4",
-    "@vscode/test-electron": "2.2.0",
     "vsce": "2.15.0"
   },
   "repository": {
@@ -240,5 +260,8 @@
     "email": "dpw@webfatorial.com"
   },
   "license": "WTFPL",
-  "publisher": "dpw"
+  "publisher": "dpw",
+  "dependencies": {
+    "handlebars": "^4.7.10"
+  }
 }
