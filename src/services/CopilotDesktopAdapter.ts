@@ -11,8 +11,10 @@ export const copilotDesktopAdapter: DesktopChatAdapter = {
   appName: "Code.exe",
   scopedSnapshots: true,
   requiresReceiptFocus: true,
+  requiresExactDraft: true,
   requiresWorkspace: false,
   allowBackgroundFocus: false,
+  minimizedWindowPolicy: "reject",
   findWindow(windows, workspaceName) {
     const windowName = workspaceName.replace(/\s/g, "");
     const matching = windows.filter(window => typeof window.title === "string" && window.title.split(" - ").some(part => part.replace(/\s/g, "") === windowName));

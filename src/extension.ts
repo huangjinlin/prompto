@@ -32,8 +32,10 @@ import {
 } from "./services/MarkdownMetaBridgeService";
 import { parseMarkdownMetaDocument } from "./services/MarkdownMetaParserService";
 import { PromptFlowWebviewProvider } from "./webview/PromptFlowWebviewProvider";
+import { PromptQueueWebviewProvider } from "./webview/PromptQueueWebviewProvider";
 import { resolveSelectionPathTemplates } from "./services/SelectionPathTemplateService";
 import { resolveSelectionVariables } from "./services/SelectionVariableService";
+import { createMarkdownFragmentLoader } from "./services/MarkdownFragmentService";
 import { getMarkdownSections } from "./services/MarkdownSectionService";
 
 let treeProvider: PromptTreeProvider;
@@ -177,6 +179,19 @@ export function activate(context: vscode.ExtensionContext) {
       PromptFlowWebviewProvider.viewType,
       flowProvider
     )
+  );
+
+  const queueProvider = new PromptQueueWebviewProvider(context.extensionUri, context.workspaceState);
+  context.subscriptions.push(
+    queueProvider,
+    vscode.window.registerWebviewViewProvider(PromptQueueWebviewProvider.viewType, queueProvider,
+      { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.commands.registerCommand("prompto.showQueue", () =>
+      vscode.commands.executeCommand(`${PromptQueueWebviewProvider.viewType}.focus`)),
+    vscode.commands.registerCommand("prompto.selectQueue", async () => {
+      await vscode.commands.executeCommand(`${PromptQueueWebviewProvider.viewType}.focus`);
+      await queueProvider.selectFile();
+    })
   );
 
   // 监听文档保存，如果保存的是 pinned 文件则刷新侧边栏
@@ -998,22 +1013,11 @@ async function sendSelectionToChat(
       vscode.window.showErrorMessage(sectionSource || editor?.selection.isEmpty ? "This section has no content to deliver." : "No text selected.");
       return;
     }
-    const renderedText = await resolveSelectionVariables(
-      selectedText,
-      document.getText(),
-      path.basename(document.fileName),
-      async name => vscode.window.showInputBox({
+    const requestValue = async (name: string) => vscode.window.showInputBox({
         title: `Variable: ${name}`,
         prompt: `Enter a value for {{${name}}}. Used for this delivery only.`,
-      }),
-      content => resolveSelectionPathTemplates(
-        content,
-        document.isUntitled ? undefined : document.uri.fsPath,
-        document.isUntitled
-          ? undefined
-          : vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-      ),
-      async reference => {
+      });
+    const loadContext = async (reference: string) => {
         if (document.isUntitled) {
           throw new Error("Save the source document before loading a shared context.");
         }
@@ -1024,8 +1028,18 @@ async function sendSelectionToChat(
         );
         const contextDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(contextPath));
         return contextDocument.getText();
-      }
-    );
+      };
+    const renderedText = await resolveSelectionVariables(
+        selectedText, document.getText(), path.basename(document.fileName), requestValue,
+        content => resolveSelectionPathTemplates(content, document.isUntitled ? undefined : document.uri.fsPath,
+          document.isUntitled ? undefined : vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath),
+        loadContext, undefined,
+        createMarkdownFragmentLoader(
+          document.isUntitled || document.uri.scheme !== "file" ? undefined : document.uri.fsPath,
+          async filePath => (await vscode.workspace.openTextDocument(vscode.Uri.file(filePath))).getText(),
+          filePath => vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath))?.uri.fsPath
+        )
+      );
     if (renderedText === null) {
       return;
     }

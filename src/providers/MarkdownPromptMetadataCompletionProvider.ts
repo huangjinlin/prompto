@@ -58,6 +58,11 @@ const DELIVERY_TARGET_VALUES = [
     detail: "Claude Code",
     documentation: "Deliver the prompt to the active terminal, intended for Claude Code.",
   },
+  {
+    label: "lingxi",
+    detail: "Lingxi project task",
+    documentation: "Requires document chatSession.project and title and a dedicated loopback CDP shortcut. Replaces target drafts by default after verified full selection. Supports prefill and single-send with independent user-message receipt checks. Trigger after the task is idle; no confirmation dialog or automatic retry.",
+  },
 ];
 
 // ── md-meta 补全定义 ──
@@ -105,7 +110,7 @@ const MD_META_PROMPTO_KEYS: PromptMetadataKeyDefinition[] = [
   {
     label: "chatSession",
     detail: "Existing chat session or task",
-    documentation: "Document scope only. Exact existing title; Qoder also requires workspace. Requires desktop authorization; Copilot desktop input requires screen reader support.",
+    documentation: "Document scope only. Exact existing title; Qoder requires workspace, Lingxi requires project. Lingxi supports prefill and guarded single-send. Copilot desktop input requires screen reader support.",
     insertText: new vscode.SnippetString("chatSession:\n\ttitle: ${1:Session title}"),
   },
   {
@@ -155,6 +160,7 @@ const MD_META_PROMPTO_KEYS: PromptMetadataKeyDefinition[] = [
 const MD_META_CHAT_SESSION_KEYS: PromptMetadataKeyDefinition[] = [
   { label: "title", detail: "Exact session or task title", documentation: "Required single-line literal title of an existing session or task.", insertText: new vscode.SnippetString("title: ${1:Session title}") },
   { label: "workspace", detail: "Qoder workspace name", documentation: "Required for Qoder only. Exact workspace name inside Qoder, not the VS Code source workspace.", insertText: new vscode.SnippetString("workspace: ${1:Workspace name}") },
+  { label: "project", detail: "Lingxi project name", documentation: "Required for Lingxi only. Exact expanded project name containing the target task.", insertText: new vscode.SnippetString("project: ${1:Project name}") },
 ];
 
 const MD_META_FLOW_KEYS: PromptMetadataKeyDefinition[] = [

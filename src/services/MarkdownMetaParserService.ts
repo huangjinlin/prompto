@@ -96,7 +96,7 @@ export function parseMarkdownMetaDocument(
         // 2. 前面只有 H1 标题且这是第一个 meta 块
         const isDocScope =
           !lastHeading || (lastHeading.level === 1 && !seenMetaBlock);
-        processMdMetaBlock(doc, block.body, block.endLine, isDocScope ? undefined : lastHeading);
+        processMdMetaBlock(doc, block.body, block.endLine, lastHeading, isDocScope);
         seenMetaBlock = true;
         i = block.endLine;
       }
@@ -114,7 +114,8 @@ function processMdMetaBlock(
   doc: MarkdownMetaDocument,
   body: string,
   endLine: number,
-  lastHeading: { title: string; level: number; line: number } | undefined
+  lastHeading: { title: string; level: number; line: number } | undefined,
+  implicitDocumentScope: boolean
 ): void {
   const parsed = parseYamlSubset(body);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -133,7 +134,7 @@ function processMdMetaBlock(
 
   // 文档级：第一个标题之前，或 scope === "document"
   const isDocumentScope =
-    scope === "document" || (!scope && !lastHeading);
+    scope === "document" || (!scope && implicitDocumentScope);
 
   if (!isDocumentScope && namespaces.prompto?.chatSession) {
     throw new Error("Prompto chatSession is only supported at document scope.");
@@ -213,6 +214,10 @@ function extractNamespaces(root: Record<string, unknown>): NamespaceBag {
 function parsePromptoMeta(obj: Record<string, unknown>): PromptoMeta {
   const meta: PromptoMeta = {};
 
+  if (Object.prototype.hasOwnProperty.call(obj, "source") || Object.prototype.hasOwnProperty.call(obj, "deliveryFrom")) {
+    throw new Error("Prompto source and deliveryFrom have been removed. Use {{include \"./file.md\" section=\"Heading\"}} in the body instead.");
+  }
+
   if (typeof obj.promptContent === "string") {
     meta.promptContent = obj.promptContent;
   }
@@ -232,14 +237,16 @@ function parsePromptoMeta(obj: Record<string, unknown>): PromptoMeta {
       throw new Error("Prompto chatSession must contain a literal title.");
     }
     const fields = session as Record<string, unknown>;
-    if (Object.keys(fields).some(key => key !== "title" && key !== "workspace") ||
+    if (Object.keys(fields).some(key => key !== "title" && key !== "workspace" && key !== "project") ||
         typeof fields.title !== "string" || !fields.title.trim() ||
         /[\u0000-\u001f\u007f{}]/.test(fields.title) ||
         (Object.prototype.hasOwnProperty.call(fields, "workspace") &&
-          (typeof fields.workspace !== "string" || !fields.workspace.trim() || /[\u0000-\u001f\u007f{}]/.test(fields.workspace)))) {
-      throw new Error("Prompto chatSession.title and optional workspace must be non-empty, single-line literals.");
+          (typeof fields.workspace !== "string" || !fields.workspace.trim() || /[\u0000-\u001f\u007f{}]/.test(fields.workspace))) ||
+        (Object.prototype.hasOwnProperty.call(fields, "project") &&
+          (typeof fields.project !== "string" || !fields.project.trim() || /[\u0000-\u001f\u007f{}]/.test(fields.project)))) {
+      throw new Error("Prompto chatSession.title and optional workspace/project must be non-empty, single-line literals.");
     }
-    meta.chatSession = { title: fields.title.trim(), ...(typeof fields.workspace === "string" ? { workspace: fields.workspace.trim() } : {}) };
+    meta.chatSession = { title: fields.title.trim(), ...(typeof fields.workspace === "string" ? { workspace: fields.workspace.trim() } : {}), ...(typeof fields.project === "string" ? { project: fields.project.trim() } : {}) };
   }
 
   if (Object.prototype.hasOwnProperty.call(obj, "sectionLevels")) {

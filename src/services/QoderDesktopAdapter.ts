@@ -1,4 +1,4 @@
-import { DesktopChatAdapter, DesktopNode, nodes, one, ref, success, normalizeText, multilineInputPlan } from "./DesktopDriver";
+import { DesktopChatAdapter, DesktopNode, nodes, one, ref, success, normalizeText } from "./DesktopDriver";
 
 function conversation(tree: DesktopNode): DesktopNode {
   return one(nodes(tree).filter(node => node.native_id?.value === "conversation"), "Qoder conversation region");
@@ -22,8 +22,10 @@ export const qoderDesktopAdapter: DesktopChatAdapter = {
   appName: "Qoder CN.exe",
   scopedSnapshots: false,
   requiresReceiptFocus: false,
+  requiresExactDraft: false,
   requiresWorkspace: true,
   allowBackgroundFocus: true,
+  minimizedWindowPolicy: "restoreAndMaximize",
   findWindow(windows, workspaceName) {
     if (!workspaceName.trim() || windows.length !== 1) throw new Error("Qoder requires an explicit workspace and one unambiguous application window.");
     return windows[0];
@@ -38,7 +40,8 @@ export const qoderDesktopAdapter: DesktopChatAdapter = {
     if (activeTitle(tree) !== title) throw new Error("The active Qoder task does not match the requested title.");
   },
   assertIdle(tree) {
-    if (nodes(conversation(tree)).some(node => node.role === "button" && /^(停止|取消)(?:$|\s|[（(]|生成|任务)/.test(node.name ?? ""))) {
+    if (nodes(conversation(tree)).some(node => node.role === "button" && !node.states?.includes("disabled") &&
+      /^(停止|取消)(?:$|\s|[（(]|生成|任务)/.test(node.name ?? ""))) {
       throw new Error("The Qoder task is generating a response.");
     }
   },
@@ -80,5 +83,7 @@ export const qoderDesktopAdapter: DesktopChatAdapter = {
     visit(conversation(tree), []);
     return count;
   },
-  inputPlan: multilineInputPlan,
+  inputPlan(content) {
+    return [{ paste: normalizeText(content) }];
+  },
 };

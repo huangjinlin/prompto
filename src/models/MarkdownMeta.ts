@@ -8,6 +8,7 @@ export type MetaScope = "document" | "node" | "action";
 export interface PromptChatSession {
   title: string;
   workspace?: string;
+  project?: string;
 }
 
 // ── 标准命名空间类型 ──

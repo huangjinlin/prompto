@@ -10,7 +10,22 @@
         "${workspaceFolder}/../test"
       ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "preLaunchTask": "${workspaceFolder}/npm: compile"
+      "preLaunchTask": "npm: compile"
+    },
+    {
+      "name": "Run Extension (Isolated)",
+      "type": "extensionHost",
+      "request": "launch",
+      "trace": true,
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--disable-extensions",
+        "--user-data-dir=${env:TEMP}/prompto-extension-debug",
+        "${workspaceFolder}/../test"
+      ],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "npm: compile"
     },
     {
       "name": "Extension Tests",
@@ -21,7 +36,7 @@
         "--extensionTestsPath=${workspaceFolder}/dist/test/suite/index"
       ],
       "outFiles": ["${workspaceFolder}/dist/test/**/*.js"],
-      "preLaunchTask": "${workspaceFolder}/npm: compile"
+      "preLaunchTask": "npm: compile"
     }
   ]
 }

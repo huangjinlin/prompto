@@ -5,7 +5,7 @@ import * as path from "path";
 export interface DesktopReply {
   ok: boolean;
   data?: unknown;
-  error?: { code?: string; disposition?: { delivery?: string; retry?: string } };
+  error?: { code?: string; message?: string; details?: { physical_delivery_started?: boolean }; disposition?: { delivery?: string; retry?: string } };
 }
 
 export type DesktopRunner = (args: string[], input?: string) => Promise<DesktopReply>;
@@ -35,7 +35,7 @@ export interface DesktopWindow {
 
 export const DESKTOP_INPUT_BYTE_LIMIT = 10000;
 
-export type DesktopInputStep = { text: string } | { key: "shift+enter" };
+export type DesktopInputStep = { text: string } | { key: "shift+enter" } | { paste: string };
 
 export interface DesktopNavigationContext {
   run: DesktopRunner;
@@ -47,8 +47,10 @@ export interface DesktopChatAdapter {
   appName: string;
   scopedSnapshots: boolean;
   requiresReceiptFocus: boolean;
+  requiresExactDraft: boolean;
   requiresWorkspace: boolean;
   allowBackgroundFocus: boolean;
+  minimizedWindowPolicy: "reject" | "restoreAndMaximize";
   findWindow(windows: DesktopWindow[], workspaceName: string): DesktopWindow;
   observationRoot(tree: DesktopNode): DesktopNode;
   activeTitle(tree: DesktopNode): string | undefined;
@@ -81,7 +83,17 @@ export function ref(node: DesktopNode): string {
 }
 
 export function success(reply: DesktopReply): DesktopReply {
-  if (!reply.ok) throw new Error(`agent-desktop operation failed (${reply.error?.code ?? "unknown"}).`);
+  if (!reply.ok) {
+    const unsafePermissions = typeof reply.error?.message === "string" &&
+      reply.error.message.includes("private file DACL grants an untrusted principal");
+    const failedFocus = typeof reply.error?.message === "string" &&
+      (reply.error.message.includes("Target window did not become foreground before headed delivery") ||
+        reply.error.message.includes("Window focus did not settle on the requested window"));
+    const detail = unsafePermissions
+      ? " agent-desktop 私有状态文件的访问控制列表（DACL）包含未受信任主体，请修复该目录权限后重试；不要以管理员身份运行投放或绕过权限检查。"
+      : failedFocus ? " 目标窗口未能获得或保持前台焦点。请先手动激活目标软件再尝试投放；不会自动重试激活。" : "";
+    throw new Error(`agent-desktop operation failed (${reply.error?.code ?? "unknown"}).${detail}`);
+  }
   return reply;
 }
 
@@ -129,7 +141,17 @@ export function createDesktopRunner(executable: string): DesktopRunner {
     const env = { ...process.env };
     delete env.AGENT_DESKTOP_SESSION;
     delete env.AGENT_DESKTOP_AGENT_ID;
-    const child = spawn(executable, args, { windowsHide: true, env, stdio: ["pipe", "pipe", "pipe"] });
+    let program = executable;
+    if (args[0] === "clipboard-formats") {
+      if (process.platform !== "win32" || args.length !== 1 || input !== undefined) {
+        reject(new Error("Clipboard format inspection requires local Windows."));
+        return;
+      }
+      program = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+      args = ["-NoProfile", "-NonInteractive", "-STA", "-Command",
+        "$ErrorActionPreference='Stop'; try { Add-Type -AssemblyName System.Windows.Forms; $data=[System.Windows.Forms.Clipboard]::GetDataObject(); $formats=@(); if($null -ne $data){$formats=@($data.GetFormats($false))}; @{ok=$true;data=@{formats=$formats}} | ConvertTo-Json -Compress -Depth 3 } catch { @{ok=$false;error=@{code='CLIPBOARD_UNAVAILABLE'}} | ConvertTo-Json -Compress -Depth 3 }"];
+    }
+    const child = spawn(program, args, { windowsHide: true, env, stdio: ["pipe", "pipe", "pipe"] });
     const chunks: Buffer[] = [];
     let byteLength = 0;
     let settled = false;

@@ -11,9 +11,10 @@ export interface MarkdownSection {
 
 export function getMarkdownSections(
   lines: string[],
-  metadata: MarkdownMetaDocument = parseMarkdownMetaDocument(lines)
+  metadata: MarkdownMetaDocument = parseMarkdownMetaDocument(lines),
+  includeAllHeadings = false
 ): MarkdownSection[] {
-  const levels = metadata.document.namespaces.prompto?.sectionLevels ?? [];
+  const levels = includeAllHeadings ? [1, 2, 3, 4, 5, 6] : metadata.document.namespaces.prompto?.sectionLevels ?? [];
   if (levels.length === 0) {
     return [];
   }
@@ -70,8 +71,8 @@ export function getMarkdownSections(
   }
 
   return headings.flatMap((heading, index) => {
-    if (!levels.includes(heading.level) || metadata.nodes.some(node =>
-      node.line === heading.line && Boolean(node.namespaces.prompto?.promptContent))) {
+    if (!levels.includes(heading.level) || (!includeAllHeadings && metadata.nodes.some(node =>
+      node.line === heading.line && Boolean(node.namespaces.prompto?.promptContent)))) {
       return [];
     }
     const endLine = headings.slice(index + 1).find(next => next.level <= heading.level)?.line ?? lines.length;

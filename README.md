@@ -126,7 +126,9 @@ Install `agent-desktop` globally (`npm install -g agent-desktop`) and enable scr
 }
 ```
 
-Prompto never changes screen reader settings. It first observes the current chat title without interacting with the desktop. If the exact requested title is already active, it uses the existing `workbench.action.chat.open` API for prefill/submit, without selecting sessions, opening lists, focusing input, or simulating typing. Title confirmation still requires a read-only agent-desktop observation; no public current-Copilot-title API is assumed. Desktop-operation authorization is requested only when an actual switch/input is needed, once per target application per extension-host run. If automatic executable discovery fails, set `prompto.desktop.executablePath` to the absolute native `.exe` under the installed package's `bin` directory, not its `.cmd` or `.ps1` wrapper. Native launching was checked with agent-desktop 1.2.0.
+Prompto never changes screen reader settings. It first observes the current chat title without interacting with the desktop. If the exact requested title is already active, it uses the existing `workbench.action.chat.open` API for prefill/submit without selecting sessions or simulating typing. Otherwise, agent-desktop selects the unique requested session and confirms its title and idle state; Prompto then checks the window is still foreground and uses the same API once with the complete rendered prompt. It does not type the prompt line by line after switching. Title confirmation still requires agent-desktop observation; no public current-Copilot-title API is assumed. Copilot skips the first-run confirmation dialog for personal use. If automatic executable discovery fails, set `prompto.desktop.executablePath` to the absolute native `.exe` under the installed package's `bin` directory, not its `.cmd` or `.ps1` wrapper. Native launching was checked with agent-desktop 1.2.0. Qoder uses the independent CDP path documented below and does not require agent-desktop or screen reader support.
+
+If native `status` fails with `private file DACL grants an untrusted principal`, desktop snapshots can fail with `INTERNAL` even when window enumeration succeeds. This is an agent-desktop private state-file permission rejection; Qoder CDP does not access that state. Inspect the agent-desktop state directory ACL and remove only the confirmed untrusted grant, preserving the other permissions and state files. Use a separate administrator terminal only if permission repair requires it, then verify `status` from the normal terminal. Do not run desktop delivery elevated, disable its security checks, or delete its state to work around the error. Prompto identifies this known rejection without exposing arbitrary native error messages or retrying input.
 
 Add an exact existing session title to the source document:
 
@@ -145,19 +147,23 @@ Please review this task.
 ```
 
 - `chatSession` is document-only; node/action configuration, `defaults.prompto.chatSession`, blank titles, templates, multiline titles, and unknown session fields are rejected. Selection, section, prompt-file, and inline node/action execution pass the source document session through the delivery pipeline. Node/action output modes and targets retain their override priority. Copilot accepts only `title`; Qoder requires `workspace` and `title`. An incompatible target override is rejected before desktop operations; Claude Code does not support named sessions.
-- No `chatSession` preserves the existing Copilot/Claude Code delivery path; Qoder requires explicit addressing and never falls back to the active chat. Copy always bypasses desktop operations. An already-active Copilot exact title goes through the VS Code API with `isPartialQuery` selecting prefill vs submit; API completion is reported separately from independently verified desktop delivery. Other sessions use desktop selection/input and retain draft and new-user-message verification.
+- No `chatSession` preserves the existing Copilot/Claude Code delivery path; Qoder requires explicit addressing and never falls back to the active chat. Copy always bypasses application operations. Copilot uses the VS Code API with the entire rendered prompt and `isPartialQuery` selecting prefill vs submit, both for an already-active exact title and after desktop selection confirms the requested title. API completion is reported separately from independently verified delivery. Qoder uses CDP input and receipt checks below.
 - Keep one matching workspace window restored and focused. For a different active title, Prompto clicks the **left back arrow beside the title** (observed as `返回 (Ctrl+N)`) to open the main session list, not the right sidebar toggle. It allows up to three fresh observations for rendering and verifies that the title picker has disappeared before selecting the unique requested row. Already on the main list means no back click. Sidebar visibility is left untouched; failed navigation/lookup does not retry the arrow or fall back to sidebar toggling. Prompto does not create sessions, search unloaded history, or pick a different window/chat on failure.
-- Any existing draft, including whitespace, is replaced: focus the chat input, select all existing text, type the rendered prompt, and verify the entire new draft before submission. This deliberately discards the old draft. An in-progress response still blocks delivery. Prompto never clears uncertain content or automatically retries. A repeated request while desktop delivery is busy is rejected rather than queued across both applications.
-- Native desktop input is limited to **10,000 UTF-8 bytes**, checked before desktop actions; the already-active-session VS Code API path does not use this stdin limit. Larger native input is rejected, not truncated or split. Desktop text travels over standard input, not a Shell command. After typing, the complete draft must match the rendered text before submission.
-- Copilot and Qoder desktop input share a multiline plan: each text line is typed through stdin, with an explicit `Shift+Enter` for every line break instead of embedding LF in a `type` call. Leading, consecutive and trailing line breaks and indentation are preserved; only CRLF/CR is normalized to LF. Every prefix is read back exactly, and a failed line break or changed focus stops delivery without sending or retrying. More lines require more CLI calls and observations. The already-active Copilot VS Code API path remains unchanged.
-- During execution, the status bar shows a spinning Prompto indicator, the current stage, and elapsed seconds. Hover to see the target session and most recent CLI command duration. The indicator and refresh timer are removed on completion, failure, or authorization cancellation.
+- Copilot passes the complete prompt through the existing chat API, rather than physically replacing the draft line by line. Qoder replaces target drafts through CDP with exact readback. An in-progress response blocks delivery. Prompto never clears uncertain content or automatically retries. A repeated request while delivery is busy is rejected rather than queued across Copilot, Qoder and Lingxi.
+- Native desktop input is limited to **10,000 UTF-8 bytes**, checked before native input actions. Larger native input is rejected, not truncated or split. Desktop text travels over standard input, not a Shell command. Copilot's API path does not use this stdin limit, including after switching sessions.
+- Copilot sends multiline Chinese text, Markdown headings and paths as one API `query`, preserving the complete rendered string without synthetic newline keys. Qoder uses per-line CDP input and Shift+Enter with fresh draft, focus and target checks; neither path modifies the clipboard. Failed actions stop delivery without automatic retry or transport fallback.
+- During execution, the status bar shows a spinning Prompto indicator, the current stage, and elapsed seconds. Hover to see the target session and most recent CLI command duration. The indicator and refresh timer are removed on completion or failure. Neither Copilot nor Qoder asks for first-run modal consent.
+- Failures include the application, delivery stage, and last native command name. This diagnostic context does not trigger retries or change delivery status: failures before input remain undelivered, while failures after attempted input or submission still require manual inspection.
+- Desktop execution writes structured diagnostics to **Output > Prompto Desktop** (a VS Code log output channel). Keep its log level at Info or more verbose to capture the full sequence. VS Code manages the log files and rotation. Each delivery has a request ID, also included in failure notifications, to correlate stages, command names/durations, error codes, known reason categories, action dispositions, window visibility/focus/identity checks, snapshot completeness, and whether input/submission commands were issued. These flags describe attempted commands, not proof of receipt. Logs do not include prompt/chat/draft/clipboard content, task/workspace names, raw snapshots, command arguments, window IDs, arbitrary native error text, or stack traces. Logging failures do not change delivery outcomes. To report a failure, provide the entries for its request ID; **Developer: Open Logs Folder** locates VS Code's saved logs.
 - Desktop delivery is sequential: each CLI call launches a native process, and accessibility snapshots traverse the UI tree. The first observation is window-wide; subsequent reads use a fresh chat-container reference only when one is actually available, with a read-only full-window fallback if it becomes stale. Noninteractive chat containers may have no reference and require full-window reads. Already-active targets need just one title observation before API delivery. Final session, focus, draft, and new-message checks remain intact for the native path. Smaller call counts are tested, but end-to-end speedup still needs live acceptance measurements.
-- Verified desktop success, API dispatch completion, definitely undelivered, and uncertain results have separate handling. API dispatch completion does not claim independently observed message receipt. Uncertain results require manual inspection; failures never automatically retry the API, transfer to another chat/input mechanism, or copy to the clipboard. Prompto does not log raw snapshots or message bodies.
+- Verified delivery, API dispatch completion, definitely undelivered, and uncertain results have separate handling. API dispatch completion does not claim independently observed message receipt. Uncertain results require manual inspection; failures never automatically retry the API, transfer to another chat/input mechanism, or use clipboard output as a fallback. Prompto does not log raw snapshots or message bodies.
 - Automated tests cover multiline Chinese, Unicode, and delivery guards through a simulated CLI. The original short-text desktop flow was verified interactively; the integrated extension's multiline/long-text prefill and send still require live acceptance testing. Reload the updated extension in an Extension Development Host or package/install the updated VSIX before testing.
 
 ### Deliver to an Existing Qoder Task
 
-Qoder CN uses the same local Windows `agent-desktop` execution and safety flow, with its own task adapter. Keep exactly one Qoder CN window restored and visible, and expand the target workspace so the task link is visible. It may initially be in the background when delivery is triggered from VS Code. After explicit authorization, Prompto focuses the target input once and independently verifies that the same Qoder window is now foreground before editing. Failed focus, ambiguity or later focus loss stops delivery without automatic refocusing. Minimized windows must be restored manually. The tested process is `Qoder CN.exe`, not its launcher. No additional model or API key is required, and Prompto does not alter Qoder settings.
+Qoder CN now uses dedicated local CDP instead of `agent-desktop`, UIA, clipboard paste or the VS Code chat API. Fully exit Qoder, including its tray process, then start the tested `Qoder CN.exe` through a separate shortcut with `--remote-debugging-port=9348 --remote-debugging-address=127.0.0.1`. Starting a normal existing instance again does not reliably apply new debugging arguments. Prompto verifies that exactly one listener is bound only to `127.0.0.1`, that its process executable matches the configured path, and that there is exactly one Qoder application page. It never starts, elevates, restarts or closes Qoder automatically and does not fall back to the old adapter on failure.
+
+Keep one Qoder window visible with the target workspace expanded and the task loaded. Save any target draft you need before triggering delivery. Do not edit, navigate or copy attachments into Qoder concurrently. There is no first-run or idle confirmation dialog; judge that generation and pending requests have finished. CDP input focus is independently checked through the editor's `activeElement`; Prompto does not simulate OS window restoration or activation.
 
 ```markdown
 <!-- md-meta
@@ -175,14 +181,88 @@ prompto:
 请只回复：收到。不要修改文件或执行命令。
 ```
 
-- `workspace` is the exact workspace name inside Qoder, not the VS Code source workspace. Both it and `title` must be non-empty single-line literals. The task must already exist. Missing, duplicate or invisible targets stop delivery; visible duplicate titles across workspaces are conservatively rejected because a title alone cannot prove active workspace identity.
-- The adapter clicks a task link at most once and independently checks the active task menu inside the conversation region. It does not confuse the sidebar's identically named menu with the active task. Multiple Qoder windows, collapsed/unloaded task lists and ambiguous identities are not automatically resolved.
-- Even an already-active Qoder task uses desktop input, never the VS Code chat API. In the tested Qoder UI, inserting a whole multiline string dropped LF characters. The adapter instead types each line through UTF-8 stdin and inserts explicit `Shift+Enter` line breaks, verifying every prefix and the complete draft. Leading, blank and trailing lines are preserved; only CRLF/CR normalization to LF is allowed. The total prompt limit remains 10,000 UTF-8 bytes, not a per-line allowance. More lines require more CLI calls and observations.
-- `chatPrefill` leaves the verified draft without sending. `chatSubmit` performs a final target, focus and draft check, clicks the send button once, and verifies a new exact user message plus an empty input. Draft text and AI echoes do not count as user messages. If user-message attribution or count changes cannot be proved, the result is uncertain, not success; Prompto never resends. An AI acknowledgement is not required for production success.
-- Authorization is separate from Copilot and includes bringing Qoder to the foreground. Before authorization there are only read-only observations, never task clicks or input focus. Copy bypasses all desktop operations. The status bar identifies the target application/workspace/session and reports stage and elapsed time without logging draft text.
-- Live CLI prototypes verified same-workspace cross-task navigation, nonempty draft replacement, exact multiline readback, one submission and a short response. Automated tests validate the integrated adapter. Reload or install the updated extension before live integration acceptance; this implementation does not claim cross-workspace navigation or all Qoder versions/locales have been tested.
+- `workspace` is the exact workspace name inside Qoder, not the VS Code source workspace. It and `title` must be nonempty single-line literals. Native DOM inspection proves that the target task belongs to the nearest single-workspace group containing the matching `data-work-directory-name`. A sidebar name and an unrelated heading alone are not sufficient. Missing, duplicate, hidden or unloaded targets stop delivery.
+- The task's stable `data-session-id`, its `data-active` marker and the current visible heading identify the target. An inactive task is clicked at most once through its verified sidebar link. Subsequent checks bind that task ID, page URL and executable/PID. Frontend `nodeId` values are refreshed after DOM observations; `backendNodeId` identifies the same editor. No task creation, unloaded-history search, automatic workspace expansion or ambiguous-window selection is performed.
+- Both modes replace the target draft, including whitespace, without an overwrite confirmation, after verifying the complete selection by DOM boundaries. An empty draft or a single U+200B placeholder may have a collapsed selection if both text readings confirm emptiness and sending is disabled. The editor must remain connected, editable, visible and active. Every line is entered with `Input.insertText`; every newline, including consecutive or trailing newlines, uses Shift+Enter. Ordinary Enter, direct DOM text mutation, clipboard access, internal editor APIs and whole-string multiline insertion are not used. Only CRLF/CR is normalized to LF. Native DOM snapshots provide the exact logical text, preserve BR line breaks, and exclude only Qoder's explicitly marked, aria-hidden, offset-ignored link-caret and favicon decorations. Snapshot raw text must still equal the protected raw-text reading. For ordinary undecorated text, raw and visible readings must also match; link-layout-only visible newlines are not mistaken for content changes. At most one leading or trailing U+200B editor sentinel is tolerated; arbitrary embedded characters are not stripped. Other differences stop the operation without clearing or retrying. Content with embedded U+200B or unsupported control characters is rejected before connecting. Input remains limited to 10,000 UTF-8 bytes; per-line checks have a 120-second operation deadline and may leave a partial draft if it expires.
+- Full executable/PID verification is performed when connecting, binding the target, before clearing, at final readback, and before sending or checking receipts. Per-line checks reuse the bound live connection and current document root instead of launching PowerShell or repeatedly refreshing the entire document. They still verify the page ID/URL, workspace/task, fresh editor handle and backend identity, editability, focus, selection, exact text, and generation controls. A stale document or changed page stops the operation without retrying. Full process checks and document refreshes no longer grow with line count for prefill; input remains per-line with Shift+Enter.
+- Visible stop/cancel controls, including disabled transition controls, block input. A send button alone is not proof of idleness. `chatPrefill` reports success only after exact full-text readback and an enabled send button. `chatSubmit` rechecks the full draft and unchanged user-message baseline, then clicks the verified send button once. At most three read-only receipt checks require one new unique `[data-message-kind="user"][data-user-message][data-message-id]`, exact `[data-chat-message-text][data-part-type="text"]` body, and an empty input in the same task. Existing messages, drafts, attachments and AI echoes are not receipts; ambiguous or rich-text-transformed message bodies fail closed. An AI response is not required.
+- Failures after attempted keyboard input are `uncertain` because selection, clearing or partial text may already have taken effect. Failures after submission may mean the message was sent. Prompto never resends, automatically clears partial drafts, copies as fallback, switches to UIA or falls back to another chat. The clipboard remains untouched. `clipboard` mode is still an explicit independent copy action.
+- Set user-level `prompto.qoder.cdpPort` (default `9348`) for connection identity. Leave `prompto.qoder.executablePath` empty to recognize the running port owner's `Qoder CN.exe` directly inside a version directory under `LOCALAPPDATA/Programs/Qoder CN/.qoder-versions`, without pinning a version or choosing the highest installed version. Each delivery still binds the initial PID and exact executable path; a process or path change stops delivery. A non-empty user setting strictly pins an absolute executable path for custom installations; clear an old value after upgrading to restore automatic detection. Check the CDP shortcut target after upgrading. Workspace settings cannot redirect the connection. Local Windows, trusted-workspace and `prompto.desktop.enabled` checks remain in force. Qoder shares the execution lock, status indicator and content-free `Prompto Desktop` request logs with Copilot and Lingxi.
+- The live CDP prototype verified replacing an existing draft with 50 characters, four lines and one blank line on Qoder CN 0.5.12. Automated tests additionally cover workspace ownership, task switching, single-send receipts, stale frontend handles and failure/no-retry behavior. Those tests are not live acceptance of the newly integrated routing, automatic ownership/navigation or real sending. Reload the development extension, start with `chatPrefill` in a dedicated task, and separately accept sending before using it on real tasks. No real send was performed during this implementation.
+- CDP is privileged even on loopback. Other local programs may access it; do not expose or forward the port. Disconnecting Prompto does not close CDP. Fully exit Qoder and use its original shortcut when debugging access is no longer needed.
 
-Desktop delivery code is separated into `DesktopDriver` (native CLI/types), `DesktopChatDeliveryService` (shared guarded workflow), and `CopilotDesktopAdapter` / `QoderDesktopAdapter` (application-specific window, navigation, input and message identification). `PromptDeliveryService` owns routing, authorization, concurrency and VS Code status UI. Existing Copilot session metadata and the active-terminal Claude Code path remain compatible.
+`DesktopDriver`, `DesktopChatDeliveryService` and `CopilotDesktopAdapter` retain the Copilot native observation path. `QoderCdpConnection` / `QoderChatDeliveryService` and `LingxiCdpConnection` / `LingxiChatDeliveryService` own their separate CDP paths. The old Qoder desktop adapter is no longer registered or used by production routing. `PromptDeliveryService` owns routing, concurrency and VS Code status UI. Existing metadata and the active-terminal Claude Code path remain compatible.
+
+### Deliver to an Existing Lingxi Project Task
+
+Lingxi uses a separate local CDP connection, not `agent-desktop`. Start it from a dedicated shortcut with `--remote-debugging-port=9347 --remote-debugging-address=127.0.0.1`. Fully exit an existing normal instance, including the tray, before switching shortcuts. Prompto checks the actual loopback listener and owning executable before connecting; it never starts, restarts, elevates or closes Lingxi.
+
+```markdown
+<!-- md-meta
+scope: document
+prompto:
+    deliveryTarget: lingxi
+    outputMode: chatPrefill
+    chatSession:
+        project: 数据服务
+        title: 很高兴认识你交流问候
+    sectionLevels: [1]
+-->
+
+# Test
+请只回复：收到。不要修改文件或执行命令。
+```
+
+- `project` and `title` are exact single-line literals. Keep the project expanded and the existing task loaded in the sidebar. Duplicate or missing projects/tasks stop delivery; `workspace` is not supported for Lingxi. Project tasks are not the same DOM list as recent tasks.
+- `chatPrefill` only fills the input. For a guarded send, change the document/queue mode to `chatSubmit` or use the explicit send command. `clipboard` remains a separate explicit copy action.
+- Target drafts, including whitespace and a previous prefill, are replaced by default in both modes. Save any draft you need before delivery. Only the addressed task is edited; a different task's draft is not cleared before navigation. A task switch happens at most once, and the exact project/task activation marker and chat route are independently verified. For a nonempty draft, a fixed DOM function creates a range covering the entire focused editor; a fresh identity/draft/control check and protected full-selection getter must pass before one `Input.insertText` replaces it. Empty drafts skip selection. Prompto does not directly clear DOM text or modify Lexical internals, and never uses Enter or a clipboard paste. `chatSubmit` then invokes the verified send button at most once through a fixed DOM function that checks the current route, project/task, input focus, complete draft and send controls immediately before clicking.
+- Enabled stop controls reject delivery. Unknown/request-transition controls also reject. A send button alone is not proof of idleness: judge that the task has finished generating and has no pending request before triggering prefill. There is no idle confirmation dialog. Do not operate Lingxi concurrently. The task, editor, controls, `activeElement` and any replacement selection are freshly checked before input; background CSS `:focus` is not treated as a reliable input identity check. Editor identity uses stable `backendNodeId`, not frontend `nodeId`, which can be reassigned by `DOM.getDocument`. Failed selection stops without input; a replacement that accidentally appends is uncertain and never submitted or retried.
+- Prompts are limited to 10,000 UTF-8 bytes, with CRLF/CR normalized to LF. Prefill success requires exact multiline draft readback and an enabled send control. Submit also checks unchanged user-message identities before clicking, then performs at most three fresh read-only observations to verify one new `.message-item--user .claw-user-message` with a new unique `data-groupid`, exact `.item__value` text and an empty input in the same task. Existing messages, drafts and AI echoes are not receipts; an AI acknowledgement is not required, and generation may be active after sending. Missing/duplicate identities, changed history, mismatched text or transport failure produce an uncertain result, never a resend. Any failure after input may leave a draft, and any failure after the send request may mean it was sent. There is no automatic retry or clipboard fallback. Lingxi shares the existing desktop execution lock and `Prompto Desktop` request logs, which omit prompt/draft text, project/task names, raw DOM and session IDs.
+- Machine/user settings `prompto.lingxi.cdpPort` (default `9347`) and `prompto.lingxi.executablePath` (default installation under `LOCALAPPDATA`) control discovery. `prompto.desktop.enabled=false` also disables Lingxi. Workspace values cannot override the connection identity settings.
+- Loopback limits remote access, not access by other local programs. Disconnecting Prompto does not close the debugging port; exit Lingxi to close it and use the original shortcut for normal startup.
+- The user accepted real Markdown prefill in the Extension Development Host after the frontend node-ID fix. Read-only checks verified the live send-button and user-message structure; automated tests cover integrated prefill/submit routing, single-click guards, new-message attribution and failures without resend. The updated extension's real submit and queue entry points still need manual acceptance. No real send was performed while implementing submit. This change does not package or install an extension.
+
+### Queue Execution
+
+Open **Prompto: 显示队列** from the command palette, or open the **队列** view in the existing Prompto activity bar. Use the folder button or **Prompto: 选择队列文件** to add one or more local `.yaml` / `.yml` workflows. Create and save files in your editor first; Prompto does not create them automatically. The sidebar lists each workflow's progress, pause/error state and current item above the selected workflow's details. Duplicate file paths are registered only once. The extension remembers registered URIs, the selected URI and per-workflow pause state; item statuses remain in the original YAML, never a separate state copy. Previous single-file selections are restored into the new list.
+
+Click a workflow to view its details without recreating its executor or dispatching anything. Each workflow keeps its own progress, pause state, messages and validation errors. The close icon removes only the selected workflow from the list and disposes its watcher; it does not delete the YAML or cancel previously dispatched AI work. A busy workflow cannot be removed. You may view another workflow while an operation is running, but competing dispatch is rejected before starting its executor or writing `doing`; no automatic dispatch queue is added. After the first operation finishes, explicitly run the other workflow yourself. Removing and re-adding a file restores progress from its YAML, not from hidden execution history.
+
+This first stage manages multiple workflows with unchanged YAML syntax and the existing prompt-document target/session routing. It does not yet add workflow-level target overrides, conversation ownership, dependencies or automatic advancement. Keep workflows targeting the same conversation from overlapping manually, especially because desktop delivery may replace drafts; separate conversations alone also do not isolate concurrent edits to the same code directory.
+
+The queue view shows items in YAML order, each item's effective output mode and the manually confirmed count. **投放下一项** explicitly delivers the first `await` item once. The check button confirms the current `doing` item as `done` without sending the next item. Pause prevents pending dispatch; resume only unpauses. Already-dispatched messages and AI tasks cannot be cancelled by this pause button. A restored `doing` item is never resent automatically.
+
+Click the file name to open the selected YAML in VS Code. Add, delete, reorder, change context or prepare a redo directly in that file. The sidebar watches editor changes, saves and external file changes automatically; there is no separate data tab or sidebar editor. Unsaved changes and invalid YAML disable delivery and confirmation until corrected and saved. Selecting a file, editing, saving and refreshing never dispatch tasks. Status updates still check the original document version and text, and reject concurrent or unsaved changes rather than overwriting them.
+
+```yaml
+outputMode: chatPrefill
+items:
+    - id: check-a
+        prompt: ./prompts.md
+        section: Check data
+        context: ./a/readme.md
+        status: done
+    - id: check-b
+        prompt: ./prompts.md
+        section: Check data
+        context: ./b/readme.md
+        outputMode: chatSubmit
+        status: await
+```
+
+- `items` is a list with unique, non-empty string IDs. Each item requires `prompt`, `section`, `context` and `status`; paths and section names must be non-empty single-line strings. Rendering requires a saved local queue file and reads the latest prompt/context document buffers through VS Code. Missing files, invalid context metadata, empty content and section lookup errors stop rendering.
+- `await` means pending, `doing` identifies the current manually managed item, and `done` means manually confirmed completion, not independently verified AI success. At most one item may be `doing`. Editing these values does not execute or undo any task.
+- Optional `outputMode` can be set on each item or at the queue root: item value takes priority, then the queue default, then `chatPrefill`. Supported values are `chatPrefill` (fill without submitting), `chatSubmit` (submit) and `clipboard` (copy). Queue defaults still override the prompt document's output mode; delivery target/session still come from that document. Unknown fields, duplicate YAML keys, invalid values and aliases are rejected.
+- Status updates locate an item by ID, including after reordering, and change only the status scalar. Other source bytes, comments, quoting and line endings are preserved. Changing `done` to `await` can prepare an item for a later explicit redo without changing other items.
+- File updates reject stale document versions and unsaved editor changes. Rejected edits, save failures or concurrent changes stop the operation rather than overwriting or retrying. The queue file is the data source; no second queue is stored in extension global state.
+- Queue `prompt` and `context` references are literal file paths, relative to the queue file's directory unless absolute. URLs, drive-relative paths, home shortcuts and template expressions are rejected. Body `{{path:...}}` expressions retain the existing prompt-file-relative behavior; leading `/` expressions use the workspace containing the prompt, not the queue directory.
+- `section` must match exactly one enabled Markdown section by title, using the existing document `prompto.sectionLevels`. Headings inside code fences are ignored; nested headings remain in the selected section. No new heading buttons are added.
+- The queue item's context overrides the prompt document's `context` only for this render, including when the prompt has no context field. The original prompt is not rewritten. Existing local `vars` still override shared context values; variables do not leak between items. Missing variables use the existing input callback, and cancellation returns without changing any status.
+- Rendering produces the final text and the prompt document's delivery target/session metadata, with the item's effective output mode taking priority. Variable values remain literal, with no recursive template or path evaluation. Execution reuses the existing delivery targets and requires workspace trust.
+- `PromptQueueExecutionService.runNext()` selects the first `await` item, finishes rendering and input callbacks, then persists `doing` before invoking delivery once. Cancellation and render errors leave status unchanged. Failed persistence or queue edits before dispatch prevent delivery. A saved `doing` item blocks another run, including after recreating the executor; it is never resent automatically.
+- `confirm(id)` marks only the current `doing` item as `done`, based on explicit manual confirmation. It does not send the next item. Verified desktop delivery, API dispatch, copying, definite failure and uncertain outcomes all leave `doing` until manual handling. For a redo, inspect the outcome and edit the intended item's status to `await`; this does not undo prior AI actions.
+- `pause()` prevents pending delivery that has not started. If `doing` was already saved, it remains for manual inspection. Pause cannot undo or cancel an already-dispatched message or AI task. `resume()` only unpauses; a separate `runNext()` is required. Overlapping operations are rejected, and version-checked file updates prevent two executors from dispatching the same item twice.
+- The result-aware delivery entry reports `verified`, `apiDispatched`, `copied`, `notDelivered` or `uncertain`. It never falls back to clipboard copying or retries an uncertain chat delivery. The original `deliverPromptContent` entry retains its existing signature and fallback behavior. Automated checks use simulated file, clipboard and desktop APIs; live VS Code queue delivery still requires manual acceptance testing.
 
 ### Document Variables for Selected Text
 
@@ -212,6 +292,56 @@ Select only the desired body text, then send, prefill, or copy using the existin
 - `selectedText` and `fileName` are reserved built-ins and cannot be redefined. They represent the selected text and source file name.
 - Replacement is single-pass: variable values are literal text, not recursively evaluated templates. Path templates in the original selection are resolved before named variables.
 - Document variables are local to the current document, not shared across workspaces. Selection and executable-section rendering do not change saved-prompt, inline `promptContent` CodeLens, or Flow execution.
+
+### Markdown Fragment Includes
+
+Reuse a heading's body inside the current task. In the host document:
+
+```markdown
+<!-- md-meta
+scope: document
+prompto:
+    sectionLevels: [1]
+    deliveryTarget: githubCopilotChat
+    chatSession:
+        title: Host task
+    context: ./project-context.md
+    vars:
+        taskName: User query endpoint
+-->
+
+# Task
+Please implement {{taskName}}.
+
+{{include "./common.md" section="API rules"}}
+
+Add focused tests for the implementation.
+```
+
+In `common.md`:
+
+```markdown
+# API rules
+Use the project's existing response format for {{taskName}}.
+
+## Examples
+Reference: {{path:./examples/response.json}}
+
+# Other rules
+This section is not sent.
+```
+
+- Put `{{include "./common.md" section="API rules"}}` on its own line. File and heading must be non-empty literal strings, not variables or expressions. Includes inside fenced code and HTML comments remain literal examples.
+- Only the selected heading's body is inserted, excluding its own heading and metadata blocks. Child headings remain until the next same-level or higher-level heading. Missing, duplicate and empty headings are errors. Referenced headings do not need `sectionLevels`; headings in code fences and comments are ignored.
+- The destination, complete chat session, context, variables and `fileName` always come from the host task. Referenced metadata is validated but never inherited. Host text before and after the include is preserved. Queue context overrides still apply to that item only.
+- Included body templates support the existing variables, string functions and conditions. Only selected condition branches read referenced files or request values. Includes cannot contain another executable include, even in an unselected branch. Variable values and string-function results stay literal, without recursive evaluation.
+- The host must be a saved local file. References accept local `.md` and `.markdown` files; `./` and `../` resolve from the host document, never from a YAML queue. URLs, UNC/network paths, home shortcuts, drive-relative paths and template paths are rejected. Leading `/` follows filesystem resolution, not the workspace-root shortcut used by path templates.
+- Inside included body text, `{{path:./...}}` resolves from the referenced file and `{{path:/...}}` uses that file's workspace. Host paths and the host context path retain their original base. `selectedText` represents the branch-selected, expanded body with resolved paths before named-variable substitution.
+- A file is read once per rendering operation through VS Code, including unsaved edits; the next operation reads its latest buffer. No source file is rewritten. Limits are 32 selected include references and 1 MiB (UTF-8) per referenced file, cumulative included body, expanded body and final output. Desktop target input limits apply independently.
+- Includes work with selections, executable sections and YAML queue tasks. Section actions still require document-level `sectionLevels`; the clicked action or shortcut determines output mode. Queue priority remains item outputMode > queue outputMode > chatPrefill.
+- Rendering finishes before a queue item is saved as doing. Errors or cancelled values do not write progress or partially dispatch. Successful delivery still waits for manual confirmation without automatic next-item execution.
+- `source` and `deliveryFrom` have been removed. Replace their node configuration with a body include and keep target/session settings in the host document. Saved-prompt, inline `promptContent` and Flow execution are unchanged and do not gain include support.
+- Reload the extension with F5 and first inspect the expanded result using **Copy** (`Shift+Enter`). Automated tests mock file and delivery APIs; live VS Code acceptance testing is still required.
 
 ### Nested Variable Namespaces
 
@@ -387,8 +517,10 @@ With document variable `var1: hello word`:
     - `qoder` - deliver to an existing Qoder CN task using document `chatSession.workspace` and `chatSession.title`
     - `claudeCode` - paste the prompt into the active terminal, intended for Claude Code
 - **`prompto.promptsDirectory`** - Workspace-relative folder where prompt markdown files are stored. Defaults to `.prompto`.
-- **`prompto.desktop.enabled`** - User/machine setting, default `true`. Set to `false` to disable named-session desktop delivery; first use still asks permission for focus and draft replacement.
-- **`prompto.desktop.executablePath`** - Optional absolute native agent-desktop `.exe` path. Empty uses local PATH/global npm discovery.
+- **`prompto.desktop.enabled`** - User/machine setting, default `true`. Set to `false` to disable named Copilot/Qoder/Lingxi delivery. There is no first-run modal. Lingxi replaces target drafts by default after identity, focus and full-selection checks.
+- **`prompto.desktop.executablePath`** - Optional absolute native agent-desktop `.exe` path for named Copilot sessions. Empty uses local PATH/global npm discovery; Qoder does not use this setting.
+- **`prompto.qoder.cdpPort`** - User/machine CDP port, default `9348`, accepted only on verified `127.0.0.1`.
+- **`prompto.qoder.executablePath`** - User-level absolute Qoder CN `.exe` identity. Empty recognizes the running port owner's executable under `LOCALAPPDATA/Programs/Qoder CN/.qoder-versions/<version>/Qoder CN.exe` without pinning a version. Non-empty strictly pins that path; clear an old value after upgrading for automatic detection. Check the CDP shortcut target separately.
 
 ## 🔧 Prompt Format
 

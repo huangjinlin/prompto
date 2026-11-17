@@ -16,7 +16,7 @@ export function findPromptoMetaForHeading(
   headingLine: number
 ): PromptoMeta | undefined {
   const doc = parseMarkdownMetaDocument(lines);
-  const node = doc.nodes.find((n) => n.line === headingLine);
+  const node = doc.nodes.find((n) => n.line === headingLine && n.namespaces.prompto);
   return node?.namespaces.prompto;
 }
 

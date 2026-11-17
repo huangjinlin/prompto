@@ -2,7 +2,7 @@
   "name": "prompto",
   "displayName": "Prompto - AI Prompt Manager",
   "description": "Keep your prompts tidy, searchable, and ready to use — all from a clean file-based workflow in AI Code Editors.",
-  "version": "1.0.28",
+  "version": "1.0.48",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -44,6 +44,16 @@
         "icon": "$(project)"
       },
       {
+        "command": "prompto.showQueue",
+        "title": "Prompto: 显示队列",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "prompto.selectQueue",
+        "title": "Prompto: 选择队列文件",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "prompto.sendSelectionToChat",
         "title": "Send Selection to Chat"
       },
@@ -65,6 +75,12 @@
         }
       ],
       "prompto": [
+        {
+          "id": "prompto.queueView",
+          "name": "队列",
+          "type": "webview",
+          "icon": "$(list-ordered)"
+        },
         {
           "id": "prompto.flowView",
           "name": "Flow Graph",
@@ -182,13 +198,41 @@
           "type": "boolean",
           "default": true,
           "scope": "machine",
-          "markdownDescription": "Named Copilot session and Qoder CN task delivery on local Windows, enabled by default. Requires agent-desktop and an explicit desktop-operation authorization. Copilot uses the VS Code chat API for an already-active exact session; other sessions require desktop input and screen reader support. Qoder requires chatSession.workspace and title, and uses verified multiline desktop input. Existing drafts are replaced. No automatic retry."
+          "markdownDescription": "Enable named Copilot sessions, Qoder CN tasks and Lingxi project-task delivery on local Windows. Copilot uses agent-desktop; Qoder and Lingxi require dedicated loopback CDP shortcuts and verified executable identity. Qoder replaces target drafts with per-line exact readback, preserving blank lines without changing the clipboard. A single send requires an independent new user-message receipt. A user-level false disables all three targets. No automatic retry or transport fallback."
         },
         "prompto.desktop.executablePath": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "markdownDescription": "Optional absolute path to the native agent-desktop `.exe`, not the npm `.cmd` or `.ps1` shim. Empty searches PATH and global npm installation directories."
+          "markdownDescription": "Optional absolute path to the native agent-desktop `.exe` for named Copilot sessions only, not the npm `.cmd` or `.ps1` shim. Qoder and Lingxi use CDP instead. Empty searches PATH and global npm installation directories."
+        },
+        "prompto.qoder.cdpPort": {
+          "type": "integer",
+          "default": 9348,
+          "minimum": 1024,
+          "maximum": 65535,
+          "scope": "machine",
+          "markdownDescription": "Qoder CN CDP port from its dedicated shortcut. Only 127.0.0.1 is accepted after verifying the owning executable. User-level setting only; Prompto does not start or close Qoder."
+        },
+        "prompto.qoder.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Optional absolute Qoder CN .exe path for port-owner verification, not the launcher. Empty recognizes the running port owner's Qoder CN.exe directly inside any version directory under LOCALAPPDATA/Programs/Qoder CN/.qoder-versions, without pinning a version. The process and exact executable path remain bound throughout each delivery. A non-empty setting strictly pins the supplied path; clear an old value after upgrading to restore automatic detection. Check the CDP shortcut target after upgrading."
+        },
+        "prompto.lingxi.cdpPort": {
+          "type": "integer",
+          "default": 9347,
+          "minimum": 1024,
+          "maximum": 65535,
+          "scope": "machine",
+          "markdownDescription": "Lingxi CDP port from the dedicated shortcut. Only 127.0.0.1 is accepted after verifying the owning executable. Prompto does not start or close Lingxi."
+        },
+        "prompto.lingxi.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Optional absolute Lingxi .exe path for port-owner verification. Empty uses LOCALAPPDATA/Programs/lingxi-desktop/WPS 灵犀.exe."
         },
         "prompto.outputMode": {
           "type": "string",
@@ -211,11 +255,13 @@
           "enum": [
             "githubCopilotChat",
             "qoder",
+            "lingxi",
             "claudeCode"
           ],
           "enumDescriptions": [
             "Deliver prompts to GitHub Copilot Chat.",
-            "Deliver prompts to an existing Qoder CN task selected by document chatSession.workspace and title.",
+            "Deliver through dedicated local CDP to an existing Qoder CN task selected by document chatSession.workspace and title. Exact multiline draft readback; no agent-desktop or clipboard fallback.",
+            "Deliver to an existing Lingxi task selected by document chatSession.project and title. Dedicated local CDP shortcut required; users judge idle without a confirmation dialog. Replaces target drafts by default, supports prefill and single-send receipt verification, never retries.",
             "Deliver prompts to the active terminal, intended for Claude Code."
           ],
           "markdownDescription": "Selects which chat surface receives prompts when **Prompto: Use Prompt** runs. Prompt metadata can override this with `deliveryTarget`."
@@ -240,6 +286,7 @@
   "devDependencies": {
     "@types/node": "16.x",
     "@types/vscode": "1.74.0",
+    "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "5.45.0",
     "@typescript-eslint/parser": "5.45.0",
     "@vscode/test-electron": "2.2.0",
@@ -262,6 +309,9 @@
   "license": "WTFPL",
   "publisher": "dpw",
   "dependencies": {
-    "handlebars": "^4.7.10"
+    "@vscode/codicons": "^0.0.36",
+    "handlebars": "^4.7.10",
+    "ws": "^8.23.0",
+    "yaml": "^2.8.1"
   }
 }
